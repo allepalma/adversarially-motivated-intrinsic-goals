@@ -132,7 +132,7 @@ class FrameStack(gym.Wrapper):
         self.observation_space = spaces.Box(
             low=0,
             high=255,
-            shape=(shp[:-1] + (shp[-1] * k,)),
+            shape=(shp[:-1] + (shp[-1] * k,)),  # Simply add the last dimension*k
             dtype=env.observation_space.dtype)
 
     def reset(self):

@@ -1,0 +1,3 @@
+Lines 760: Added flag parameter (solve incompatibility between torch 1.9 and 1.5)
+Lines 761: Added flag parameter (solve incompatibility between torch 1.9 and 1.5)
+Lines 968: Added self.flag attribute

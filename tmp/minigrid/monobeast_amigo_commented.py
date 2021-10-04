@@ -8,9 +8,10 @@
 
 import sys
 
-#Introduce the path where torchbeast to call its embedded modules
+
 sys.path.insert(0,'../..')
 
+import random
 import argparse
 import logging
 import os
@@ -38,25 +39,17 @@ from torchbeast.core import vtrace
 
 from env_utils import Observation_WrapperSetup, FrameStack
 
-"""
-INITIALIZATION
-"""
 
 # Some Global Variables
 # We start t* at 7 steps.
 generator_batch = dict()
 generator_batch_aux = dict()
-# With generator they mean the teacher
-
-# t* is the threshold of steps to reach the goal over which the teacher is
-#rewarded.
 generator_current_target = 7.0
 generator_count = 0
 
 # yapf: disable
 parser = argparse.ArgumentParser(description='PyTorch Scalable Agent')
 
-#Check the MiniGrid documentation to pick another environment
 parser.add_argument('--env', type=str, default='MiniGrid-Empty-8x8-v0',
                     help='Gym environment.')
 parser.add_argument('--mode', default='train',
@@ -84,12 +77,10 @@ parser.add_argument('--disable_cuda', action='store_true',
 # Loss settings.
 parser.add_argument('--entropy_cost', default=0.0005, type=float,
                     help='Entropy cost/multiplier.')
-# Teacher entropy cost (article says 0.01)
 parser.add_argument('--generator_entropy_cost', default=0.05, type=float,
                     help='Entropy cost/multiplier.')
 parser.add_argument('--baseline_cost', default=0.5, type=float,
                     help='Baseline cost/multiplier.')
-# Discount factor only for student
 parser.add_argument('--discounting', default=0.99, type=float,
                     help='Discounting factor.')
 parser.add_argument('--reward_clipping', default='abs_one',
@@ -99,10 +90,8 @@ parser.add_argument('--reward_clipping', default='abs_one',
 # Optimizer settings.
 parser.add_argument('--learning_rate', default=0.001, type=float,
                     metavar='LR', help='Learning rate.')
-# Article says 0.002 for the generator learning_rate
 parser.add_argument('--generator_learning_rate', default=0.002, type=float,
                     metavar='LR', help='Learning rate.')
-# Alpha is parameter for RMSProp optimizer for gradient propagation
 parser.add_argument('--alpha', default=0.99, type=float,
                     help='RMSProp smoothing constant.')
 parser.add_argument('--momentum', default=0, type=float,
@@ -114,12 +103,10 @@ parser.add_argument('--epsilon', default=0.01, type=float,
 # Other Hyperparameters
 parser.add_argument('--batch_size', default=8, type=int, metavar='B',
                     help='Learner batch size (default: 4).')
-#In the article they say the generator batch size should be 150
 parser.add_argument('--generator_batch_size', default=32, type=int, metavar='BB',
                     help='Learner batch size (default: 4).')
 parser.add_argument('--unroll_length', default=100, type=int, metavar='T',
-                    help='The unroll length (time dimension; default: 100).')
-#In the article the goal_dim should be 5
+                    help='The unroll length (time dimension; default: 64).')
 parser.add_argument('--goal_dim', default=10, type=int,
                     help='Size of Goal Embedding')
 parser.add_argument('--state_embedding_dim', default=256, type=int,
@@ -127,7 +114,7 @@ parser.add_argument('--state_embedding_dim', default=256, type=int,
 parser.add_argument('--generator_reward_negative', default= -0.1, type=float,
                     help='Coefficient for the intrinsic reward')
 parser.add_argument('--generator_threshold', default=-0.5, type=float,
-                    help='Threshold mean reward for which scheduler increases difficulty')
+                    help='Threshold mean reward for wich scheduler increases difficulty')
 parser.add_argument('--generator_counts', default=10, type=int,
                     help='Number of time before generator increases difficulty')
 parser.add_argument('--generator_maximum', default=100, type=float,
@@ -142,14 +129,12 @@ parser.add_argument('--fix_seed', action='store_true',
 parser.add_argument('--env_seed', default=1, type=int,
                     help='The seed to set for the env if we are using a single fixed seed.')
 parser.add_argument('--inner', action='store_true',
-                    help='Exclude outer wall')
-# Multiple game state frames can be fed into the models in principle by choice
+                    help='Exlucde outer wall')
 parser.add_argument('--num_input_frames', default=1, type=int,
                     help='Number of input frames to the model and state embedding including the current frame \
                     When num_input_frames > 1, it will also take the previous num_input_frames - 1 frames as input.')
 
 # Ablations and other settings
-#LSTM for partial view of the environment
 parser.add_argument("--use_lstm", action="store_true",
                     help="Use LSTM in agent model.")
 parser.add_argument('--num_lstm_layers', default=1, type=int,
@@ -158,7 +143,6 @@ parser.add_argument('--disable_use_embedding', action='store_true',
                     help='Disable embeddings.')
 parser.add_argument('--no_extrinsic_rewards', action='store_true',
                     help='Only intrinsic rewards.')
-# Only use the policy network with no goal generation
 parser.add_argument('--no_generator', action='store_true',
                     help='Use vanilla policy-deprecated')
 parser.add_argument('--intrinsic_reward_coef', default=1.0, type=float,
@@ -179,9 +163,8 @@ parser.add_argument('--no_boundary_awareness', action='store_true',
                     help='Remove Episode Boundary Awareness')
 parser.add_argument('--generator_loss_form', type=str, default='threshold',
                     help='[threshold,dummy,gaussian, linear]')
-# Set the ground for the ablation studies
 parser.add_argument('--generator_target', default=5.0, type=float,
-                    help='Mean target for Gaussian and Linear Rewards')
+                    help='Mean target for Gassian and Linear Rewards')
 parser.add_argument('--target_variance', default=15.0, type=float,
                     help='Variance for the Gaussian Reward')
 # yapf: enable
@@ -193,14 +176,8 @@ logging.basicConfig(
     level=0,
 )
 
-# typing.Dict allows to specify the type of keys and values of the dictionary
-# Our buffer will have string keys and a list of torch tensors
 Buffers = typing.Dict[str, typing.List[torch.Tensor]]
 
-
-"""
-UTIL FUNCTIONS
-"""
 
 def compute_baseline_loss(advantages):
     # Take the mean over batch, sum over time.
@@ -723,19 +700,10 @@ def create_buffers(obs_shape, num_actions, flags, width, height, logits_size) ->
     return buffers
 
 
-"""
-TRAIN FUNCTION
-"""
-
-
 def train(flags):  
     """Full training loop."""
-
-    #Set a label to the training ID based on the date
     if flags.xpid is None:
         flags.xpid = "torchbeast-%s" % time.strftime("%Y%m%d-%H%M%S")
-
-    #Set up the logging system
     plogger = file_writer.FileWriter(
         xpid=flags.xpid, xp_args=flags.__dict__, rootdir=flags.savedir
     )
@@ -743,17 +711,15 @@ def train(flags):
         os.path.expanduser("%s/%s/%s" % (flags.savedir, flags.xpid, "model.tar"))
     )
 
-    # Set the number of shared buffers based on the number of actors
     if flags.num_buffers is None:  # Set sensible default for num_buffers.
         flags.num_buffers = max(2 * flags.num_actors, flags.batch_size)
     if flags.num_actors >= flags.num_buffers:
         raise ValueError("num_buffers should be larger than num_actors")
 
-    # Set maximum length of an unroll event and the batch size
     T = flags.unroll_length
     B = flags.batch_size
     
-    # Check if the system has GPU
+
     flags.device = None
     if not flags.disable_cuda and torch.cuda.is_available():
         logging.info("Using CUDA.")
@@ -762,14 +728,13 @@ def train(flags):
         logging.info("Not using CUDA.")
         flags.device = torch.device("cpu")
 
-    # Create the environment of Minigrid
     env = create_env(flags)
-
-    # If we train with multiple consequent frames, replace env with a stack object
+    
+    #env = wrappers.FullyObsWrapper(env)
     if flags.num_input_frames > 1:
         env = FrameStack(env, flags.num_input_frames)
 
-    # Now create the two models: generator_model is the teacher and model is the student
+    #Added flags
     generator_model = Generator(env.observation_space.shape, env.width, env.height, num_input_frames=flags.num_input_frames, flags = flags)
     model = Net(env.observation_space.shape, env.action_space.n, flags = flags, state_embedding_dim=flags.state_embedding_dim, num_input_frames=flags.num_input_frames, use_lstm=flags.use_lstm, num_lstm_layers=flags.num_lstm_layers)
 
@@ -947,15 +912,9 @@ def train(flags):
 
 
 def init(module, weight_init, bias_init, gain=1):
-    """Global function initializing the weights and the bias of a module"""
     weight_init(module.weight.data, gain=gain)
     bias_init(module.bias.data)
     return module
-
-
-"""
-The classes implementing the teacher and student nets
-"""
 
 
 class Generator(nn.Module):
@@ -963,24 +922,23 @@ class Generator(nn.Module):
     def __init__(self, observation_shape, width, height, flags, num_input_frames, hidden_dim=256):
         super(Generator, self).__init__()
         self.observation_shape = observation_shape
-        self.height = height  # Height of grid
-        self.width = width  # Width of grid
+        self.height = height
+        self.width = width
         self.env_dim = self.width * self.height
         self.state_embedding_dim = 256
-        self.flags = flags  # Added to allow training
+        self.flags = flags
+        
 
-        self.use_index_select = True  # Used in the select function
-        self.obj_dim = 5  # There are 5 types of objects
-        self.col_dim = 3  # Three types of colour
-        self.con_dim = 2  # Two conditions (door open/door closed)
+        self.use_index_select = True
+        self.obj_dim = 5
+        self.col_dim = 3
+        self.con_dim = 2
         self.num_channels = (self.obj_dim + self.col_dim + self.con_dim) * num_input_frames
 
-        if self.flags.disable_use_embedding:
+        if flags.disable_use_embedding:
             print("not_using_embedding")
             self.num_channels = 3*num_input_frames
 
-        # Initialize the embedding layers for the objects in the environment. They start from a certain vocabulary
-        # size (11,6,4) and end with te required dimensionality
         self.embed_object = nn.Embedding(11, self.obj_dim)
         self.embed_color = nn.Embedding(6, self.col_dim)
         self.embed_contains = nn.Embedding(4, self.con_dim)
@@ -993,19 +951,11 @@ class Generator(nn.Module):
         M = 16  # number of intermediate filters
         Y = 8  # number of output filters
         L = 4  # number of convnet layers
-        E = 1  # output of last layer
+        E = 1 # output of last layer 
 
-        """
-        What you do here is to create a 4-layer CNN representing the teacher.
-        It will input a 10-layer input with each level representing one feature
-        among possible colour, objects and state. 
-        """
-
-        # Make 4 dimensionality preserving convolutional networks
         in_channels = [K] + [M] * 4
         out_channels = [M] * 3 + [E] 
 
-        #Create a CNN stack
         conv_extract = [
             nn.Conv2d(
                 in_channels=in_channels[i],
@@ -1018,29 +968,26 @@ class Generator(nn.Module):
         ]
 
 
+
+
         def interleave(xs, ys):
-            """ Return elements of two iterables in interleaved fashion"""
             return [val for pair in zip(xs, ys) for val in pair]
 
-        # Simply place ELU activation after each convolutional layer
         self.extract_representation = nn.Sequential(
             *interleave(conv_extract, [nn.ELU()] * len(conv_extract))
         )
 
-        # The grid size by 16 plus 5 plus 3
         self.out_dim = self.env_dim * 16 + self.obj_dim + self.col_dim
 
-        #Function that initializes the weights of a module as orthogonal matrix and 0 bias
+
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                             constant_(x, 0))
-
-        #Change the dimensions of the environment if you exclude the outer wall
+        
         if flags.inner:
             self.aux_env_dim = (self.height-2) * (self.width-2)
         else:
             self.aux_env_dim = self.env_dim    
 
-        #Initialize baseline teacher as a linear layer projecting grid size to 1.
         self.baseline_teacher = init_(nn.Linear(self.aux_env_dim, 1))
 
     def _select(self, embed, x):
@@ -1053,7 +1000,7 @@ class Generator(nn.Module):
             return embed(x)  
 
     def create_embeddings(self, x, id):
-        """Generates compositional embeddings. It will be passed with all three ids"""
+        """Generates compositional embeddings."""
         if id == 0:
             objects_emb = self._select(self.embed_object, x[:,:,:,id::3])
         elif id == 1:
@@ -1071,55 +1018,56 @@ class Generator(nn.Module):
         goals = goals.long()
         return goals
 
+
     def agent_loc(self, frames):
         """Returns the location of an agent from an observation."""
         T, B, height, width, *_ = frames.shape
         agent_location = torch.flatten(frames, 2, 3)
         agent_location = agent_location[:,:,:,0] 
-        agent_location = (agent_location == 10).nonzero()  # select object id
+        agent_location = (agent_location == 10).nonzero() # select object id
         agent_location = agent_location[:,2]
         agent_location = agent_location.view(T,B,1)        
         return agent_location 
 
     def forward(self, inputs):
         """Main Function, takes an observation and returns a goal."""
-        x = inputs["frame"]  # The input image
-        T, B, *_ = x.shape  # Time (T), Batch (B)
+        x = inputs["frame"]
+        T, B, *_ = x.shape
         carried_col = inputs["carried_col"]
         carried_obj = inputs["carried_obj"]
 
-        x = torch.flatten(x, 0, 1)  # Merge first two dimensions
+
+        x = torch.flatten(x, 0, 1)  # Merge time and batch.
         if self.flags.disable_use_embedding:
             x = x.float() 
             carried_obj = carried_obj.float()
             carried_col = carried_col.float()
-        else:
-            x = x.long()  # Conversion to type int64
-            carried_obj = carried_obj.long()  # Conversion to type int64
-            carried_col = carried_col.long()  # Conversion to type int64
-            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1),
-                           self.create_embeddings(x, 2)], dim = 3)
-            #Select the embeddings for the observation
+        else:    
+            x = x.long()
+            carried_obj = carried_obj.long()
+            carried_col = carried_col.long()
+            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)], dim = 3)
             carried_obj_emb = self._select(self.embed_object, carried_obj)
             carried_col_emb = self._select(self.embed_color, carried_col)
-
+              
         x = x.transpose(1, 3)
+
+        #Unused
         carried_obj_emb = carried_obj_emb.view(T * B, -1)
         carried_col_emb = carried_col_emb.view(T * B, -1)
 
         x = self.extract_representation(x)
-        x = x.view(T * B, -1) # -1 means that the second dimension is inferred by torch
+        x = x.view(T * B, -1)
 
-        generator_logits = x.view(T * B, -1)
+        generator_logits = x.view(T*B, -1)
 
         generator_baseline = self.baseline_teacher(generator_logits)
-
-        #Sample the index of the goal from a multinomial distribution based on softmax probabilities
+        
         goal = torch.multinomial(F.softmax(generator_logits, dim=1), num_samples=1)
 
-        generator_logits = generator_logits.view(T, B, -1)
+        generator_logits = generator_logits.view(T, B, -1)  # -1 in View means that the other dim is inferred by torch
         generator_baseline = generator_baseline.view(T, B)
-        goal = goal.view(T, B)  # Transform goal to a 1x1 tensor
+        goal = goal.view(T, B)
 
         if self.flags.inner:
             goal = self.convert_inner(goal)
@@ -1127,12 +1075,14 @@ class Generator(nn.Module):
         return dict(goal=goal, generator_logits=generator_logits, generator_baseline=generator_baseline)
 
 
+
+
 class MinigridNet(nn.Module):
     """Constructs the Student Policy which takes an observation and a goal and produces an action."""
     def __init__(self, observation_shape, num_actions, flags, state_embedding_dim=256, num_input_frames=1, use_lstm=False, num_lstm_layers=1):
         super(MinigridNet, self).__init__()
         self.observation_shape = observation_shape
-        self.num_actions = num_actions  # The total number of actions to do
+        self.num_actions = num_actions
         self.state_embedding_dim = state_embedding_dim
         self.use_lstm = use_lstm
         self.num_lstm_layers = num_lstm_layers
@@ -1142,9 +1092,8 @@ class MinigridNet(nn.Module):
         self.obj_dim = 5
         self.col_dim = 3
         self.con_dim = 2
-        self.goal_dim = flags.goal_dim  # This is set to 10
+        self.goal_dim = flags.goal_dim
         self.agent_loc_dim = 10
-        # Same process as the teacher but add a 1
         self.num_channels = (self.obj_dim + self.col_dim + self.con_dim + 1) * num_input_frames
         
         if flags.disable_use_embedding:
@@ -1158,11 +1107,10 @@ class MinigridNet(nn.Module):
         self.embed_goal = nn.Embedding(self.observation_shape[0]*self.observation_shape[1] + 1, self.goal_dim)
         self.embed_agent_loc = nn.Embedding(self.observation_shape[0]*self.observation_shape[1] + 1, self.agent_loc_dim)
 
-        # Weight initialization function
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                             constant_(x, 0), nn.init.calculate_gain('relu'))
 
-        # Set up the convolutional net
+                  
         self.feat_extract = nn.Sequential(
             init_(nn.Conv2d(in_channels=self.num_channels, out_channels=32, kernel_size=(3, 3), stride=2, padding=1)),
                 nn.ELU(),
@@ -1177,7 +1125,6 @@ class MinigridNet(nn.Module):
             )
         
 
-        # Linear bottleneck
         self.fc = nn.Sequential(
             init_(nn.Linear(32 + self.obj_dim + self.col_dim, self.state_embedding_dim)),
             nn.ReLU(),
@@ -1192,7 +1139,6 @@ class MinigridNet(nn.Module):
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                             constant_(x, 0))
 
-        # Policy and Baseline are used for baseline subtraction
         self.policy = init_(nn.Linear(self.state_embedding_dim, self.num_actions))
         self.baseline = init_(nn.Linear(self.state_embedding_dim, 1))
 
@@ -1203,7 +1149,7 @@ class MinigridNet(nn.Module):
             return tuple()
         return tuple(torch.zeros(self.core.num_layers, batch_size, self.core.hidden_size) for _ in range(2))
   
-    # Same functions as in teacher
+
     def create_embeddings(self, x, id):
         """Generates compositional embeddings."""
         if id == 0:
@@ -1235,12 +1181,12 @@ class MinigridNet(nn.Module):
         return agent_location    
 
 
+
     def forward(self, inputs, core_state=(), goal=[]):
         """Main Function, takes an observation and a goal and returns and action."""
 
         # -- [unroll_length x batch_size x height x width x channels]
         x = inputs["frame"]
-        #Initialize the variables from observation
         T, B, h, w, *_ = x.shape
        
         # -- [unroll_length*batch_size x height x width x channels]
@@ -1251,9 +1197,9 @@ class MinigridNet(nn.Module):
         # Creating goal_channel
         goal_channel = torch.zeros_like(x, requires_grad=False)
         goal_channel = torch.flatten(goal_channel, 1,2)[:,:,0]
-        for i in range(goal.shape[0]):  # Goal shape is 1 so only one iteration
-            goal_channel[i,goal[i]] = 1.0  # Place a 1 only in the board where the goal is
-        goal_channel = goal_channel.view(T*B, h, w, 1)  # Put it back to matrix like
+        for i in range(goal.shape[0]):
+            goal_channel[i,goal[i]] = 1.0
+        goal_channel = goal_channel.view(T*B, h, w, 1)
         carried_col = inputs["carried_col"]
         carried_obj = inputs["carried_obj"]
 
@@ -1277,13 +1223,12 @@ class MinigridNet(nn.Module):
 
         
         x = x.transpose(1, 3)
-        x = self.feat_extract(x)  # Apply the dimension-preserving convolutional network to the x
+        x = self.feat_extract(x)
         x = x.view(T * B, -1)
         carried_obj_emb = carried_obj_emb.view(T * B, -1)
-        carried_col_emb = carried_col_emb.view(T * B, -1)
+        carried_col_emb = carried_col_emb.view(T * B, -1) 
         union = torch.cat([x, carried_obj_emb, carried_col_emb], dim=1)
         core_input = self.fc(union)
-
 
         if self.use_lstm:
             core_input = core_input.view(T, B, -1)
@@ -1300,7 +1245,6 @@ class MinigridNet(nn.Module):
             core_state = tuple()
 
         policy_logits = self.policy(core_output)
-        print(policy_logits.shape)
         baseline = self.baseline(core_output)
         
         if self.training:
@@ -1320,14 +1264,6 @@ Net = MinigridNet
 GeneratorNet = Generator
 
 
-"""
-create_env simply instantiates an object of type Minigrid2Image. The latter
-is a sub-class of the gym ObservationWrapper, which is a specific class of 
-the gym environment that allows to override the way gym returns the environmnet
-variables. In our case, the method observation of the Minigrid2Image class
-allows to output images after a step. 
-"""
-
 class Minigrid2Image(gym.ObservationWrapper):
     """Get MiniGrid observation to ignore language instruction."""
     def __init__(self, env):
@@ -1342,7 +1278,6 @@ def create_env(flags):
     return Minigrid2Image(wrappers.FullyObsWrapper(gym.make(flags.env)))
 
 def main(flags):
-    """Call the train or test function"""
     if flags.mode == "train":
         train(flags)
     else:
@@ -1351,4 +1286,5 @@ def main(flags):
 
 if __name__ == "__main__":
     flags = parser.parse_args()
+    print(flags)
     main(flags)
