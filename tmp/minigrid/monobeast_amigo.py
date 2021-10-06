@@ -38,6 +38,7 @@ from torchbeast.core import vtrace
 
 from env_utils import Observation_WrapperSetup, FrameStack
 
+
 """
 INITIALIZATION
 """
@@ -224,8 +225,12 @@ def compute_policy_gradient_loss(logits, actions, advantages):
     )
     cross_entropy = cross_entropy.view_as(advantages)
     advantages.requires_grad = False
+    # As in policy gradient, multiply the log probs by the advantages
     policy_gradient_loss_per_timestep = cross_entropy * advantages
+    # To complete policy gradient loss we must take the mean over all the trajectories and
+    # sum across them.
     return torch.sum(torch.mean(policy_gradient_loss_per_timestep, dim=1))
+
 
 def act(
     actor_index: int,
@@ -240,36 +245,44 @@ def act(
     try:
         logging.info("Actor %i started.", actor_index)
         timings = prof.Timings()  # Keep track of how fast things are.
-        gym_env = create_env(flags)
+        gym_env = create_env(flags)  # Create environment instance
         seed = actor_index ^ int.from_bytes(os.urandom(4), byteorder="little")
-        gym_env.seed(seed)
-        #gym_env = wrappers.FullyObsWrapper(gym_env)
+        gym_env.seed(seed)  # Set a seed
 
+        # Create a stack of frames if the number of input frames is larger than 1
         if flags.num_input_frames > 1:
             gym_env = FrameStack(gym_env, flags.num_input_frames)
         
-        
+        # Observation_WrapperSetup turns the environment into one that can setup observation items into torch
         env = Observation_WrapperSetup(gym_env, fix_seed=flags.fix_seed, env_seed=flags.env_seed)
+        # Dictionary with observation specifics
         env_output = env.initial()
-        initial_frame = env_output['frame']
+        initial_frame = env_output['frame']  # 1x1x8x8x3 observation
 
-        
+        # Initialize state for student
         agent_state = model.initial_state(batch_size=1)
+
+        # Get the goal from the teacher
         generator_output = generator_model(env_output)
         goal = generator_output["goal"]
-        
+
+        # Use the agent to act in the environment. unused_state is the unused_object
+        # dumped cause we are not using LSTMs
         agent_output, unused_state = model(env_output, agent_state, goal)
         while True:
+            # Remove and return an item from the queue
             index = free_queue.get()
-            if index is None:
+            if index is None:  # No free processes
                 break
-            # Write old rollout end.
+            # Save results at time 0
             for key in env_output:
                 buffers[key][index][0, ...] = env_output[key]
             for key in agent_output:
                 buffers[key][index][0, ...] = agent_output[key]
             for key in generator_output:
-                buffers[key][index][0, ...] = generator_output[key]   
+                buffers[key][index][0, ...] = generator_output[key]
+
+            # Still for the usage of the LSTM
             buffers["initial_frame"][index][0, ...] = initial_frame     
             for i, tensor in enumerate(agent_state):
                 initial_agent_state_buffers[index][i][...] = tensor
@@ -279,9 +292,7 @@ def act(
                 aux_steps = 0
                 timings.reset()
 
-                
-
-                if flags.modify:
+                if flags.modify:  # Will probably be False
                     new_frame = torch.flatten(env_output['frame'], 2, 3)
                     old_frame = torch.flatten(initial_frame, 2, 3)
                     ans = new_frame == old_frame
@@ -290,43 +301,43 @@ def act(
                     
                 else:
                     agent_location = torch.flatten(env_output['frame'], 2, 3)
-                    agent_location = agent_location[:,:,:,0] 
-                    agent_location = (agent_location == 10).nonzero() # select object id
-                    agent_location = agent_location[:,2]
+                    agent_location = agent_location[:,:,:,0]  # Pick just one channel
+                    agent_location = (agent_location == 10).nonzero()  # select object id
+                    agent_location = agent_location[:,2]  # Where the agent is on the table
                     agent_location = agent_location.view(agent_output["action"].shape)
-                    reached_condition = goal == agent_location
+                    reached_condition = goal == agent_location  # True if agent lies on the goal
            
 
                 if reached_condition:   # Generate new goal when reached intrinsic goal
-                    if flags.restart_episode:
-                        env_output = env.initial() 
+                    if flags.restart_episode:  # Intuitively False by default
+                        env_output = env.initial()
                     else:
-                        env.episode_step = 0    
+                        env.episode_step = 0  # Reset the number of steps in the episode
                     initial_frame = env_output['frame']
+                    # Inference, so no requirement of the gradient
                     with torch.no_grad():
+                        # Generate new goal
                         generator_output = generator_model(env_output)
                     goal = generator_output["goal"]
 
                 if env_output['done'][0] == 1:  # Generate a New Goal when episode finished
+                    # Set the frame as the new initial_frame for the next iteration
                     initial_frame = env_output['frame']
                     with torch.no_grad():
                         generator_output = generator_model(env_output)
                     goal = generator_output["goal"]
 
-
+                # If agent is still alive in episode, predict action
                 with torch.no_grad():
                     agent_output, agent_state = model(env_output, agent_state)
-                
-                    
+
                 timings.time("model")
-
+                # Perform step
                 env_output = env.step(agent_output["action"])
-
-                    
-                    
 
                 timings.time("step")
 
+                # Update the buffer with the values of the results of the new step
                 for key in env_output:
                     buffers[key][index][t + 1, ...] = env_output[key]
                 for key in agent_output:
@@ -335,9 +346,9 @@ def act(
                     buffers[key][index][t + 1, ...] = generator_output[key]  
                 buffers["initial_frame"][index][t + 1, ...] = initial_frame     
 
-                
-
                 timings.time("write")
+
+            # Put it back in the full queue of processes
             full_queue.put(index)
         if actor_index == 0:
             logging.info("Actor %i: %s", actor_index, timings.summary())
@@ -365,22 +376,29 @@ def get_batch(
         timings.time("lock")
         indices = [full_queue.get() for _ in range(flags.batch_size)]
         timings.time("dequeue")
+
+    #Put together a batch of experiences from all the processes
     batch = {
         key: torch.stack([buffers[key][m] for m in indices], dim=1) for key in buffers
     }
+
+    # Just for RNN usage
     initial_agent_state = (
         torch.cat(ts, dim=1)
         for ts in zip(*[initial_agent_state_buffers[m] for m in indices])
     )
     timings.time("batch")
+
+    # Put free processes back into the free_queue object
     for m in indices:
         free_queue.put(m)
     timings.time("enqueue")
+    # Place batch object into the GPU device (if any)
     batch = {k: t.to(device=flags.device, non_blocking=True) for k, t in batch.items()}
     initial_agent_state = tuple(t.to(device=flags.device, non_blocking=True)
                                 for t in initial_agent_state)
     timings.time("device")
-
+    # Return a batch with combined experiences over the last unrolling from all agents
     return batch, initial_agent_state
 
 
@@ -403,28 +421,36 @@ def reached_goal_func(frames, goals, initial_frames = None, done_aux = None):
         agent_location = agent_location.view(goals.shape)
         return (goals == agent_location).float()
 
+
 def learn(
-    actor_model, model, actor_generator_model, generator_model, batch, initial_agent_state, optimizer, generator_model_optimizer, scheduler, generator_scheduler, flags, max_steps=100.0, lock=threading.Lock()
-):
+    actor_model, model, actor_generator_model, generator_model, batch, initial_agent_state, optimizer, generator_model_optimizer, scheduler, generator_scheduler, flags, max_steps=100.0, lock=threading.Lock()):
     """Performs a learning (optimization) step for the policy, and for the generator whenever the generator batch is full."""
     with lock:
-
         # Loading Batch
+        # Keep all frames but the first
         next_frame = batch['frame'][1:].float().to(device=flags.device)
         initial_frames = batch['initial_frame'][1:].float().to(device=flags.device)
-        done_aux = batch['done'][1:].float().to(device=flags.device) 
+        done_aux = batch['done'][1:].float().to(device=flags.device)
+        # Get, for each training frame whether the goal was reached or not
         reached_goal = reached_goal_func(next_frame, batch['goal'][1:].to(device=flags.device), initial_frames = initial_frames, done_aux = done_aux)
+        # The reward obtained by the agent intrinsically is awarded only when the agent reaches a goal
         intrinsic_rewards = flags.intrinsic_reward_coef * reached_goal
         reached = reached_goal.type(torch.bool)
+        # Implement the penalization described at page 7
         intrinsic_rewards = intrinsic_rewards*(intrinsic_rewards - 0.9 * (batch["episode_step"][1:].float()/max_steps))
 
+        # Now launch the action prediction on the batch with gradient required
         learner_outputs, unused_state = model(batch, initial_agent_state, batch['goal'])
+        # Pick the last value prediction in the entire run by all processes
         bootstrap_value = learner_outputs["baseline"][-1]
+        # Remove first observations (initialization) from experience batch
         batch = {key: tensor[1:] for key, tensor in batch.items()}
+        # Remove last step of the output by the agent prediction batch
         learner_outputs = {key: tensor[:-1] for key, tensor in learner_outputs.items()}
+        # Extract the extrinsic rewards from the experience replay batch
         rewards = batch["reward"]
-        
-        # Student Rewards
+
+        # Student Rewards (variants are parts of the tuning process)
         if flags.no_generator:
             total_rewards = rewards
         elif flags.no_extrinsic_rewards:
@@ -432,6 +458,7 @@ def learn(
         else:
             total_rewards = rewards + intrinsic_rewards
 
+        # Perform reward clipping with chosen technique
         if flags.reward_clipping == "abs_one":
             clipped_rewards = torch.clamp(total_rewards, -1, 1)
         elif flags.reward_clipping == "soft_asymmetric":
@@ -440,20 +467,24 @@ def learn(
             clipped_rewards = torch.where(total_rewards < 0, 0.3 * squeezed, squeezed) * 5.0
         elif flags.reward_clipping == "none":
             clipped_rewards = total_rewards
+        # Discount until done (end of episode)
         discounts = (~batch["done"]).float() * flags.discounting
-        clipped_rewards += 1.0 * (rewards>0.0).float()  
+        #Add 1 to positive clipped rewards (?)
+        clipped_rewards += 1.0 * (rewards>0.0).float()
 
-
-
+        # The behaviour policy is the one from the rollout, the target policy
+        # is the one that learns from the experience batch
         vtrace_returns = vtrace.from_logits(
             behavior_policy_logits=batch["policy_logits"],
             target_policy_logits=learner_outputs["policy_logits"],
             actions=batch["action"],
             discounts=discounts,
             rewards=clipped_rewards,
-            values=learner_outputs["baseline"],
+            values=learner_outputs["baseline"],  # Recomputed by learner on experience
             bootstrap_value=bootstrap_value,
         )
+        # In vtrace_returns there are log_rhos, behavious_log_probs, target_action_log_probs
+        # pg_advantages, vs
 
         # Student Loss
         # Compute loss as a weighted sum of the baseline loss, the policy
@@ -462,22 +493,26 @@ def learn(
             learner_outputs["policy_logits"],
             batch["action"],
             vtrace_returns.pg_advantages,
-        )
+        )  # Standard policy gradient loss based on the advantages and the log probs
         baseline_loss = flags.baseline_cost * compute_baseline_loss(
             vtrace_returns.vs - learner_outputs["baseline"]
         )
         entropy_loss = flags.entropy_cost * compute_entropy_loss(
             learner_outputs["policy_logits"]
         )
-        
+
+        # The three losses are summed into a final loss
         total_loss = pg_loss + baseline_loss + entropy_loss
 
+        #Get the returns for the episodes by fetching timesteps flagged as "done"
         episode_returns = batch["episode_return"][batch["done"]]
 
         if torch.isnan(torch.mean(episode_returns)):
             aux_mean_episode = 0.0
         else:
+            #Mean total episode return
             aux_mean_episode = torch.mean(episode_returns).item()
+
         stats = {
             "episode_returns": tuple(episode_returns.cpu().numpy()),
             "mean_episode_return": aux_mean_episode, 
@@ -508,8 +543,10 @@ def learn(
         scheduler.step()
         optimizer.zero_grad()
         total_loss.backward()
+        # Set a maximum for the values of the parameters of the student
         nn.utils.clip_grad_norm_(model.parameters(), 40.0)
         optimizer.step()
+        # Share parameters of the learner with the actor model (the one performing rollouts)
         actor_model.load_state_dict(model.state_dict())
 
         # Generator:
@@ -522,7 +559,10 @@ def learn(
 
             # Loading Batch
             is_done = batch['done']==1
+            # Reached is a variable of bools for all timesteps in all dimensions stating
+            # whether the agent reached the goal or not
             reached = reached_goal.type(torch.bool)
+            # The teacher gets updated only at the end of an episode
             if 'frame' in generator_batch.keys():
                 generator_batch['frame'] = torch.cat((generator_batch['frame'], batch['initial_frame'][is_done].float().to(device=flags.device)), 0) 
                 generator_batch['goal'] = torch.cat((generator_batch['goal'], batch['goal'][is_done].to(device=flags.device)), 0)
@@ -560,20 +600,22 @@ def learn(
                 generator_batch['generator_logits'] = torch.cat((generator_batch['generator_logits'], batch['generator_logits'][reached].float().to(device=flags.device)), 0)
                 generator_batch['reached'] = torch.cat((generator_batch['reached'], torch.ones(batch['goal'].shape)[reached].float().to(device=flags.device)), 0)
 
-    
-            if generator_batch['frame'].shape[0] >= flags.generator_batch_size: # Run Gradient step, keep batch residual in batch_aux
+            # Run Gradient step, keep batch residual in batch_aux
+            if generator_batch['frame'].shape[0] >= flags.generator_batch_size:
                 for key in generator_batch:
+                    # Keep only a batch of pre-defined size in the generator_batch and keep the rest in the auxiliary one
                     generator_batch_aux[key] = generator_batch[key][flags.generator_batch_size:]
-                    generator_batch[key] =  generator_batch[key][:flags.generator_batch_size].unsqueeze(0)
+                    generator_batch[key] = generator_batch[key][:flags.generator_batch_size].unsqueeze(0)
 
-            
                 generator_outputs = generator_model(generator_batch)
+                # Get the generator value from the output of the generator model
                 generator_bootstrap_value = generator_outputs["generator_baseline"][-1]
-                
+
                 # Generator Reward
-                def distance2(episode_step, reached, targ=flags.generator_target): 
+                def distance2(episode_step, reached, targ=flags.generator_target):
+                    """The function implementing the reward system for the agent"""
                     aux = flags.generator_reward_negative * torch.ones(episode_step.shape).to(device=flags.device)
-                    aux += (episode_step >= targ).float() * reached
+                    aux += (episode_step >= targ).float() * reached  # 0.9 positive reward when goal reached, otherwise -0.1
                     return aux             
 
                 if flags.generator_loss_form == 'gaussian':
@@ -586,56 +628,57 @@ def learn(
                     torch.exp ((-generator_batch['episode_step'] + flags.generator_target)/20.0) * (generator_batch['episode_step'] > flags.generator_target).float()) * \
                     2*generator_batch['reached'] - 1
 
-                
                 elif flags.generator_loss_form == 'dummy':
                     generator_rewards = torch.tensor(distance2(generator_batch['episode_step'], generator_batch['reached'])).to(device=flags.device)
 
+                # This is the standard one described by the article
                 elif flags.generator_loss_form == 'threshold':
                     generator_rewards = torch.tensor(distance2(generator_batch['episode_step'], generator_batch['reached'], targ=generator_current_target)).to(device=flags.device)        
 
+                # If the mean reward is higher than a pre-defined threshold, we increase the difficulty
                 if torch.mean(generator_rewards).item() >= flags.generator_threshold:
                     generator_count += 1
                 else:
                     generator_count = 0    
-                
-                if generator_count >= flags.generator_counts and generator_current_target<=flags.generator_maximum:
+
+                # Increasing difficulty means increasing t*
+                if generator_count >= flags.generator_counts and generator_current_target <= flags.generator_maximum:
                     generator_current_target += 1.0
                     generator_count = 0
                     goal_count_dict *= 0.0
 
-
+                # If we want for the teacher to identify where the environment changes the most (False by default)
                 if flags.novelty:
                     frames_aux = torch.flatten(generator_batch['frame'], 2, 3)
-                    frames_aux = frames_aux[:,:,:,0] 
-                    object_ids =torch.zeros(generator_batch['goal'].shape).long()
+                    # Get first dimension representing object
+                    frames_aux = frames_aux[:,:,:,0]
+                    # Create a zero vector with shape of the goal one from the batch
+                    object_ids = torch.zeros(generator_batch['goal'].shape).long()
                     for i in range(object_ids.shape[1]):
+                        # What object was at the goal site in a certain frame will be stored at object_ids
                         object_ids[0,i] = frames_aux[0,i,generator_batch['goal'][0,i]]
                         goal_count_dict[object_ids[0,i]] += 1 
-                    
-                    bonus = (object_ids>2).float().to(device=flags.device)  * flags.novelty_bonus
-                    generator_rewards += bonus 
 
+                    # Add the bonus to the reward in case of novelty
+                    bonus = (object_ids > 2).float().to(device=flags.device) * flags.novelty_bonus
+                    generator_rewards += bonus
 
                 if flags.reward_clipping == "abs_one":
                     generator_clipped_rewards = torch.clamp(generator_rewards, -1, 1)
 
-
                 if not flags.no_extrinsic_rewards:
                     generator_clipped_rewards = 1.0 * (generator_batch['ex_reward'] > 0).float() + generator_clipped_rewards * (generator_batch['ex_reward'] <= 0).float()
 
-
                 generator_discounts = torch.zeros(generator_batch['episode_step'].shape).float().to(device=flags.device)
 
-                
-                goals_aux = generator_batch["goal"]
+                goals_aux = generator_batch["goal"]  # Contains the number of the goal cell at each step
                 if flags.inner:
                     goals_aux = goals_aux.float()
                     goals_aux -= 2 * (torch.floor(goals_aux/generator_model.height))
                     goals_aux -= generator_model.height -1
                     goals_aux = goals_aux.long()
 
-                
-
+                # Get the same exact vtrace return as the student
                 generator_vtrace_returns = vtrace.from_logits(
                     behavior_policy_logits=generator_batch["generator_logits"],
                     target_policy_logits=generator_outputs["generator_logits"],
@@ -663,8 +706,8 @@ def learn(
                     generator_outputs["generator_logits"]
                 )
 
-
-                generator_total_loss = gg_loss + generator_entropy_loss +generator_baseline_loss 
+                # Compute the loss as the sum of the three loss components
+                generator_total_loss = gg_loss + generator_entropy_loss + generator_baseline_loss
 
 
                 intrinsic_rewards_gen = generator_batch['reached']*(1- 0.9 * (generator_batch["episode_step"].float()/max_steps))
@@ -676,28 +719,30 @@ def learn(
                 stats["mean_episode_steps"] = torch.mean(generator_batch["episode_step"]).item()
                 stats["ex_reward"] = torch.mean(generator_batch['ex_reward']).item()
                 stats["generator_current_target"] = generator_current_target
-                
-                
-        
+
+                # Do the training steps for the generator
                 generator_scheduler.step()
                 generator_model_optimizer.zero_grad() 
                 generator_total_loss.backward()
                 
                 nn.utils.clip_grad_norm_(generator_model.parameters(), 40.0)
                 generator_model_optimizer.step()
+                # For the next acting step, load the weights of the optimized generator onto the acting one
                 actor_generator_model.load_state_dict(generator_model.state_dict())
-                
 
-                if generator_batch_aux['frame'].shape[0]>0:
+                if generator_batch_aux['frame'].shape[0] > 0:
+                    # Copy the items of generator_batch_aux into generator_batch
                     generator_batch = {key: tensor[:] for key, tensor in generator_batch_aux.items()}
                 else:
                     generator_batch = dict()
-                
         return stats
 
 
 def create_buffers(obs_shape, num_actions, flags, width, height, logits_size) -> Buffers:
-    T = flags.unroll_length
+    """Imports characteristics of the state and action space and returns a
+    typing.Dict object"""
+    T = flags.unroll_length  # The maximum length of an episode
+    # Create a dictionary of dictionaries containing information across all episodes.
     specs = dict(
         frame=dict(size=(T + 1, *obs_shape), dtype=torch.uint8),
         reward=dict(size=(T + 1,), dtype=torch.float32),
@@ -773,21 +818,24 @@ def train(flags):
     generator_model = Generator(env.observation_space.shape, env.width, env.height, num_input_frames=flags.num_input_frames, flags = flags)
     model = Net(env.observation_space.shape, env.action_space.n, flags = flags, state_embedding_dim=flags.state_embedding_dim, num_input_frames=flags.num_input_frames, use_lstm=flags.use_lstm, num_lstm_layers=flags.num_lstm_layers)
 
+    # Create a global variable as a torch tensor of 11 zeros
     global goal_count_dict
     goal_count_dict = torch.zeros(11).float().to(device=flags.device)
 
-    
+    # Define the size of the logits as the one of the board
     if flags.inner:
         logits_size = (env.width-2)*(env.height-2)
     else:  
         logits_size = env.width * env.height  
 
+    # Call create buffers function with well-defined parameters
     buffers = create_buffers(env.observation_space.shape, model.num_actions, flags, env.width, env.height, logits_size)
 
+    # All the processes of the multi-process run will share data from the buffer
     model.share_memory()
     generator_model.share_memory()
 
-    # Add initial RNN state.
+    # Add initial RNN state (only if using RNN)
     initial_agent_state_buffers = []
     for _ in range(flags.num_buffers):
         state = model.initial_state(batch_size=1)
@@ -795,11 +843,14 @@ def train(flags):
             t.share_memory_()
         initial_agent_state_buffers.append(state)
 
+    # Deal with the multi-processing framework
     actor_processes = []
+    # Create a multiprocessing spawn object and the relative queues
     ctx = mp.get_context("spawn")
     free_queue = ctx.SimpleQueue()
     full_queue = ctx.SimpleQueue()
 
+    # Generate different actors as data sharing processes and start them
     for i in range(flags.num_actors):
         actor = ctx.Process(
             target=act,
@@ -808,12 +859,14 @@ def train(flags):
         actor.start()
         actor_processes.append(actor)
 
+    # Reassigned the Net object to learner_model
     learner_model = Net(env.observation_space.shape, env.action_space.n, flags = flags, state_embedding_dim=flags.state_embedding_dim, num_input_frames=flags.num_input_frames, use_lstm=flags.use_lstm, num_lstm_layers=flags.num_lstm_layers).to(
-        device=flags.device
-    )
-    #Added flags
+        device=flags.device)
+
+    # Reassign the generator object to learner_generator_model
     learner_generator_model = Generator(env.observation_space.shape, env.width, env.height, flags = flags, num_input_frames=flags.num_input_frames).to(device=flags.device)
 
+    # Define optimizer variables for gradient propagation
     optimizer = torch.optim.RMSprop(
         learner_model.parameters(),
         lr=flags.learning_rate,
@@ -830,8 +883,10 @@ def train(flags):
         alpha=flags.alpha)
 
     def lr_lambda(epoch):
+        """Scheduling for alpha"""
         return 1 - min(epoch * T * B, flags.total_frames) / flags.total_frames
 
+    # Adjust the scheduling of the lambda parameter
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     generator_scheduler = torch.optim.lr_scheduler.LambdaLR(generator_model_optimizer, lr_lambda)
 
@@ -853,16 +908,19 @@ def train(flags):
     ]
     logger.info("# Step\t%s", "\t".join(stat_keys))
 
+    #Define frames and stats variables that will be overridden by the batch_and_learn function
     frames, stats = 0, {}
 
     def batch_and_learn(i, lock=threading.Lock()):
         """Thread target for the learning process."""
         nonlocal frames, stats
         timings = prof.Timings()
-        while frames < flags.total_frames:
+        while frames < flags.total_frames:  # Stop after 6x10^8
             timings.reset()
+            # Get a batch of previous experience
             batch, agent_state = get_batch(flags, free_queue, full_queue, buffers,
                 initial_agent_state_buffers, timings)
+            # Launch tge learn function
             stats = learn(model, learner_model, generator_model, learner_generator_model, batch, agent_state, optimizer, generator_model_optimizer, scheduler, generator_scheduler, flags, env.max_steps)
 
             timings.time("learn")
@@ -873,10 +931,11 @@ def train(flags):
                 frames += T * B
         if i == 0:
             logging.info("Batch and learn: %s", timings.summary())
-
+    # Put all processes in the free queue
     for m in range(flags.num_buffers):
         free_queue.put(m)
 
+    # Let multiple threads learn
     threads = []
     for i in range(flags.num_threads):
         thread = threading.Thread(
@@ -904,7 +963,7 @@ def train(flags):
 
     timer = timeit.default_timer
     try:
-        last_checkpoint_time = timer()
+        last_checkpoint_time = timer()  # Fix the time of last result saving
         
         while frames < flags.total_frames:
             start_frames = frames
@@ -1300,7 +1359,6 @@ class MinigridNet(nn.Module):
             core_state = tuple()
 
         policy_logits = self.policy(core_output)
-        print(policy_logits.shape)
         baseline = self.baseline(core_output)
         
         if self.training:
@@ -1315,7 +1373,7 @@ class MinigridNet(nn.Module):
         return dict(policy_logits=policy_logits, baseline=baseline, action=action), core_state
 
  
-
+### Teacher and student reused for acting and learning ###
 Net = MinigridNet
 GeneratorNet = Generator
 
@@ -1346,7 +1404,7 @@ def main(flags):
     if flags.mode == "train":
         train(flags)
     else:
-        test(flags)
+        test(flags)  # There exists no test function
 
 
 if __name__ == "__main__":

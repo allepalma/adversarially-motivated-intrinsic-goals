@@ -50,8 +50,10 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 
 
 def action_log_probs(policy_logits, actions):
+    # Compute negative log-likelihood function between the logsoftmax logits
+    # and the actions taken
     return -F.nll_loss(
-        F.log_softmax(torch.flatten(policy_logits, 0, -2), dim=-1),
+        F.log_softmax(torch.flatten(policy_logits, 0, -2), dim=-1),  # Apply softmax to logits
         torch.flatten(actions),
         reduction="none",
     ).view_as(actions)
@@ -70,8 +72,10 @@ def from_logits(
 ):
     """V-trace for softmax policies."""
 
+    # Compute the log probabilities between the logits and the actions from experience
     target_action_log_probs = action_log_probs(target_policy_logits, actions)
     behavior_action_log_probs = action_log_probs(behavior_policy_logits, actions)
+    # Learner log probs minus behavioural log probs
     log_rhos = target_action_log_probs - behavior_action_log_probs
     vtrace_returns = from_importance_weights(
         log_rhos=log_rhos,
@@ -102,21 +106,25 @@ def from_importance_weights(
 ):
     """V-trace from log importance weights."""
     with torch.no_grad():
+        # Exponentiate log rhos
         rhos = torch.exp(log_rhos)
         if clip_rho_threshold is not None:
             clipped_rhos = torch.clamp(rhos, max=clip_rho_threshold)
         else:
             clipped_rhos = rhos
 
+        # Clip the rhos
         cs = torch.clamp(rhos, max=1.0)
         # Append bootstrapped value to get [v1, ..., v_t+1]
         values_t_plus_1 = torch.cat(
             [values[1:], torch.unsqueeze(bootstrap_value, 0)], dim=0
-        )
+        )  # Get the entire trace of values of the learner
+        # Probably described in the IMPALA article
         deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
 
-        acc = torch.zeros_like(bootstrap_value)
+        acc = torch.zeros_like(bootstrap_value)  # dimension (1,8)
         result = []
+        # Now walk the timesteps in reverse as in policy gradient
         for t in range(discounts.shape[0] - 1, -1, -1):
             acc = deltas[t] + discounts[t] * cs[t] * acc
             result.append(acc)
