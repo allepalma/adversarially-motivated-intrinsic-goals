@@ -126,7 +126,7 @@ def from_importance_weights(
         result = []
         # Now walk the timesteps in reverse as in policy gradient
         for t in range(discounts.shape[0] - 1, -1, -1):
-            acc = deltas[t] + discounts[t] * cs[t] * acc
+            acc = deltas[t] + discounts[t] * cs[t] * acc  # Compute recursively
             result.append(acc)
         result.reverse()
         vs_minus_v_xs = torch.stack(result)

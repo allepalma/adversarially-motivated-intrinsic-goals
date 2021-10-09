@@ -540,8 +540,9 @@ def learn(
             stats["ex_reward"] = 0.0,
             stats["generator_current_target"] = 0.0,
 
-        scheduler.step()
+
         optimizer.zero_grad()
+        scheduler.step()
         total_loss.backward()
         # Set a maximum for the values of the parameters of the student
         nn.utils.clip_grad_norm_(model.parameters(), 40.0)
@@ -721,8 +722,8 @@ def learn(
                 stats["generator_current_target"] = generator_current_target
 
                 # Do the training steps for the generator
+                generator_model_optimizer.zero_grad()
                 generator_scheduler.step()
-                generator_model_optimizer.zero_grad() 
                 generator_total_loss.backward()
                 
                 nn.utils.clip_grad_norm_(generator_model.parameters(), 40.0)
@@ -1304,7 +1305,8 @@ class MinigridNet(nn.Module):
        
         # -- [unroll_length*batch_size x height x width x channels]
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
-        goal = torch.tensor(goal)
+        if type(goal) == list:
+            goal = torch.tensor(goal)
         goal = torch.flatten(goal, 0)  # Removed the 1
 
         # Creating goal_channel
