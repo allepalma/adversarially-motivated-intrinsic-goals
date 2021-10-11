@@ -370,18 +370,18 @@ def get_batch(
     initial_agent_state_buffers,
     timings,
     lock=threading.Lock()):
+    
+    
     """Returns a Batch with the history."""
-
     with lock:
         timings.time("lock")
-        indices = [full_queue.get() for _ in range(flags.batch_size)]
-        timings.time("dequeue")
+        indices = [full_queue.get() for _ in range(flags.batch_size)]    
+        timings.time("dequeue")        
 
     #Put together a batch of experiences from all the processes
     batch = {
         key: torch.stack([buffers[key][m] for m in indices], dim=1) for key in buffers
     }
-
     # Just for RNN usage
     initial_agent_state = (
         torch.cat(ts, dim=1)
@@ -843,13 +843,13 @@ def train(flags):
         for t in state:
             t.share_memory_()
         initial_agent_state_buffers.append(state)
-
+    
     # Deal with the multi-processing framework
     actor_processes = []
     # Create a multiprocessing spawn object and the relative queues
     ctx = mp.get_context("spawn")
-    free_queue = ctx.SimpleQueue()
-    full_queue = ctx.SimpleQueue()
+    free_queue = ctx.Queue()
+    full_queue = ctx.Queue()
 
     # Generate different actors as data sharing processes and start them
     for i in range(flags.num_actors):
@@ -908,6 +908,7 @@ def train(flags):
         "generator_current_target",
     ]
     logger.info("# Step\t%s", "\t".join(stat_keys))
+    
 
     #Define frames and stats variables that will be overridden by the batch_and_learn function
     frames, stats = 0, {}
@@ -923,6 +924,7 @@ def train(flags):
                 initial_agent_state_buffers, timings)
             # Launch tge learn function
             stats = learn(model, learner_model, generator_model, learner_generator_model, batch, agent_state, optimizer, generator_model_optimizer, scheduler, generator_scheduler, flags, env.max_steps)
+            
 
             timings.time("learn")
             with lock:
@@ -961,7 +963,7 @@ def train(flags):
             },
             checkpointpath,
         )
-
+    
     timer = timeit.default_timer
     try:
         last_checkpoint_time = timer()  # Fix the time of last result saving
@@ -990,6 +992,7 @@ def train(flags):
                 mean_return,
                 pprint.pformat(stats),
             )
+    
     except KeyboardInterrupt:
         return  # Try joining actors then quit.
     else:
@@ -1169,6 +1172,7 @@ class Generator(nn.Module):
 
         x = self.extract_representation(x)
         x = x.view(T * B, -1) # -1 means that the second dimension is inferred by torch
+        
 
         generator_logits = x.view(T * B, -1)
 
