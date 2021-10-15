@@ -3,7 +3,7 @@
 This is an implementation for Learning with AMIGo: Adversarially Motivated Intrinsic GOals. 
 
 <p align="center">
-  <img width="604" height="252" src="https://github.com/facebookresearch/adversarially-motivated-intrinsic-goals/raw/master/resources/amigo.png">
+  <img width="604" height="252" src="https://github.com/allepalma/adversarially-motivated-intrinsic-goals/blob/master/resources/amigo.png">
 </p>
 
 The method described in the [AMIGo paper](https://arxiv.org/abs/2006.12122) listed below is implemented in [monobeast/minigrid/monobeast_amigo.py](./monobeast/minigrid/monobeast_amigo.py) of this repository. Please consult that file for details of the teacher and student policies, the losses used to train them, and other aspects of training. 
