@@ -52,6 +52,8 @@ VTraceReturns = collections.namedtuple("VTraceReturns", "vs pg_advantages")
 def action_log_probs(policy_logits, actions):
     # Compute negative log-likelihood function between the logsoftmax logits
     # and the actions taken
+    act = torch.flatten(actions)[0]
+    prob = F.log_softmax(torch.flatten(policy_logits, 0, -2), dim=-1)[0,act]
     return -F.nll_loss(
         F.log_softmax(torch.flatten(policy_logits, 0, -2), dim=-1),  # Apply softmax to logits
         torch.flatten(actions),
