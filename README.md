@@ -46,8 +46,7 @@ pip install -r requirements.txt
 # Run AMIGo on MiniGrid Environment
 OMP_NUM_THREADS=1 python -m monobeast.minigrid.monobeast_amigo --env MiniGrid-KeyCorridorS5R3-v0 \
 --num_actors 40 --modify --generator_batch_size 150 --generator_entropy_cost .05 \
---generator_threshold -.5 --total_frames 600000000 \
---generator_reward_negative -.3 \
+--generator_threshold -.5 --total_frames 600000000 --generator_reward_negative -.3 \
 --savedir ./experimentMinigrid
 ```
 Please be sure to use --total_frames as in the paper: <br>
