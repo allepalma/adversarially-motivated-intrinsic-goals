@@ -54,7 +54,7 @@ Please be sure to use --total_frames as in the paper: <br>
 6e8 for KeyCorridorS4R3-v0, KeyCorridorS5R3-v0, ObstructedMaze-2Dlhb-v0, ObstructedMaze-1Q-v0 <br>
 3e7 for KeyCorridorS3R3 and ObstructedMaze-1Dl-v0
 
-Moreover, the flag ```bash --disable\_checkpoints``` only if the user does not want to save the model parameters
+Moreover, the flag ```--disable\_checkpoints``` only if the user does not want to save the model parameters
 
 
 ## Test AMIGo on MiniGrid
@@ -65,7 +65,7 @@ OMP_NUM_THREADS=1 python -m monobeast.minigrid.monobeast_amigo --env trained_ami
 --weight_path path_to_saved_weights --record_video --video_path path_to_video.mp4
 ```
 
-If the flag ```bash --disable\_checkpoints``` is used, an mp4 video of a random rollout will be produced at the selected path. To record the video, ffmpeg must be installed.
+If the flag ```--disable\_checkpoints``` is used, an mp4 video of a random rollout will be produced at the selected path. To record the video, ffmpeg must be installed.
 
 ## Train the baselines on MiniGrid
 We used an open sourced [implementation](https://github.com/facebookresearch/impact-driven-exploration) of the exploration baselines (i.e. RIDE, RND, ICM, and Count). This code should be pulled in a separate local repository and run within a separate environment.
