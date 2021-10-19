@@ -312,7 +312,6 @@ def act(
                     agent_location = agent_location[:,2]  # Where the agent is on the table
                     agent_location = agent_location.view(agent_output["action"].shape)
                     reached_condition = goal == agent_location  # True if agent lies on the goal
-           
 
                 if reached_condition:   # Generate new goal when reached intrinsic goal
                     if flags.restart_episode:  # Intuitively False by default
@@ -325,7 +324,6 @@ def act(
                         # Generate new goal
                         generator_output = generator_model(env_output)
                     goal = generator_output["goal"]
-
                 if env_output['done'][0] == 1:  # Generate a New Goal when episode finished
                     # Set the frame as the new initial_frame for the next iteration
                     initial_frame = env_output['frame']
@@ -376,8 +374,6 @@ def get_batch(
     initial_agent_state_buffers,
     timings,
     lock=threading.Lock()):
-    
-    
     """Returns a Batch with the history."""
     with lock:
         timings.time("lock")
@@ -422,7 +418,7 @@ def reached_goal_func(frames, goals, initial_frames = None, done_aux = None):
     else:    
         agent_location = torch.flatten(frames, 2, 3)
         agent_location = agent_location[:,:,:,0] 
-        agent_location = (agent_location == 10).nonzero() # select object id
+        agent_location = (agent_location == 10).nonzero()  # select object id
         agent_location = agent_location[:,2]
         agent_location = agent_location.view(goals.shape)
         return (goals == agent_location).float()
@@ -475,7 +471,6 @@ def learn(
             clipped_rewards = total_rewards
         # Discount until done (end of episode)
         discounts = (~batch["done"]).float() * flags.discounting
-        #Add 1 to positive clipped rewards (?)
         clipped_rewards += 1.0 * (rewards>0.0).float()
 
         # The behaviour policy is the one from the rollout, the target policy
@@ -750,7 +745,7 @@ def learn(
 def create_buffers(obs_shape, num_actions, flags, width, height, logits_size) -> Buffers:
     """Imports characteristics of the state and action space and returns a
     typing.Dict object"""
-    T = flags.unroll_length  # The maximum length of an episode
+    T = flags.unroll_length
     # Create a dictionary of dictionaries containing information across all episodes.
     specs = dict(
         frame=dict(size=(T + 1, *obs_shape), dtype=torch.uint8),
@@ -784,7 +779,6 @@ TRAIN FUNCTION
 
 def train(flags):  
     """Full training loop."""
-
     #Set a label to the training ID based on the date
     if flags.xpid is None:
         # flags.xpid = "torchbeast-%s" % time.strftime("%Y%m%d-%H%M%S")
@@ -1180,7 +1174,7 @@ class Generator(nn.Module):
         carried_col_emb = carried_col_emb.view(T * B, -1)
 
         x = self.extract_representation(x)
-        x = x.view(T * B, -1) # -1 means that the second dimension is inferred by torch
+        x = x.view(T * B, -1)  # -1 means that the second dimension is inferred by torch
         
 
         generator_logits = x.view(T * B, -1)
