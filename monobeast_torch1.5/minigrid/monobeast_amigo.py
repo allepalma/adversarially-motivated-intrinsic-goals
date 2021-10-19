@@ -170,6 +170,10 @@ parser.add_argument('--target_variance', default=15.0, type=float,
                     help='Variance for the Gaussian Reward')
 # yapf: enable
 
+# Set your initials
+parser.add_argument('--initials', type=str, default='anonymous',
+                    help='Person who runs the experiment')
+
 logging.basicConfig(
     format=(
         "[%(levelname)s:%(process)d %(module)s:%(lineno)d %(asctime)s] " "%(message)s"
@@ -705,6 +709,8 @@ def train(flags):
     """Full training loop."""
     if flags.xpid is None:
         flags.xpid = "torchbeast-%s" % time.strftime("%Y%m%d-%H%M%S")
+        # flags.xpid = "torchbeast-%s" % time.strftime("%Y%m%d-%H%M%S")
+        flags.xpid = "{}_{}_{}".format(flags.env, flags.initials, time.strftime("%m%d-%H%M"))
     plogger = file_writer.FileWriter(
         xpid=flags.xpid, xp_args=flags.__dict__, rootdir=flags.savedir
     )
