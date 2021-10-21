@@ -19,6 +19,7 @@ import timeit
 import traceback
 import pprint
 import typing
+import pickle as pkl
 
 import torch
 from torch import multiprocessing as mp
@@ -173,6 +174,14 @@ parser.add_argument('--target_variance', default=15.0, type=float,
 # Set your initials
 parser.add_argument('--initials', type=str, default='anonymous',
                     help='Person who runs the experiment')
+
+
+# Save environment
+parser.add_argument('--save_env', action='store_true',
+                    help='Save environment and goal for inspection')
+parser.add_argument('--save_every', type=int, default='anonymous',
+                    help='How often you want to save the environment')
+
 
 # Flag for test
 parser.add_argument('--weight_path', default='model.tar',type = str,
@@ -926,6 +935,9 @@ def train(flags):
         threads.append(thread)
 
     def checkpoint():
+        if flags.save_env:
+            env_goal_dict = {'env':[], 'goal':[]}
+            cp = 0
         if flags.disable_checkpoint:
             return
         logging.info("Saving checkpoint to %s", checkpointpath)
@@ -955,6 +967,16 @@ def train(flags):
                 checkpoint()
                 last_checkpoint_time = timer()
 
+            # Save the environment and the goal
+            if flags.save_env:
+                if frames // save_every > cp:
+                    env_goal_dict['env'] = buffers['frames'][-1]
+                    env_goal_dict['goal'] = buffers['goals'][-1]
+                    cp += 1
+                    with open('frames_goals.pkl', 'wb') as file:
+                        pkl.dump(env_goal_dict, file)
+
+
             fps = (frames - start_frames) / (timer() - start_time)
             if stats.get("episode_returns", None):
                 mean_return = (
@@ -971,6 +993,11 @@ def train(flags):
                 mean_return,
                 pprint.pformat(stats),
             )
+
+        if flags.save_env:
+            with open('frames_goals.pkl', 'wb') as file:
+                pkl.dump(env_goal_dict, file)
+
     except KeyboardInterrupt:
         return  # Try joining actors then quit.
     else:
