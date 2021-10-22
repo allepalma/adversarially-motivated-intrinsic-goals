@@ -179,7 +179,7 @@ parser.add_argument('--initials', type=str, default='anonymous',
 # Save environment
 parser.add_argument('--save_env', action='store_true',
                     help='Save environment and goal for inspection')
-parser.add_argument('--save_every', type=int, default='anonymous',
+parser.add_argument('--save_every', type=int, default=50000,
                     help='How often you want to save the environment')
 
 
@@ -935,9 +935,6 @@ def train(flags):
         threads.append(thread)
 
     def checkpoint():
-        if flags.save_env:
-            env_goal_dict = {'env':[], 'goal':[]}
-            cp = 0
         if flags.disable_checkpoint:
             return
         logging.info("Saving checkpoint to %s", checkpointpath)
@@ -958,6 +955,11 @@ def train(flags):
     timer = timeit.default_timer
     try:
         last_checkpoint_time = timer()
+
+        if flags.save_env:
+            env_goal_dict = {'frame':[],'env':[], 'goal':[]}
+            cp = 0
+
         
         while frames < flags.total_frames:
             start_frames = frames
@@ -969,11 +971,12 @@ def train(flags):
 
             # Save the environment and the goal
             if flags.save_env:
-                if frames // save_every > cp:
-                    env_goal_dict['env'] = buffers['frames'][-1]
-                    env_goal_dict['goal'] = buffers['goals'][-1]
+                if frames // flags.save_every > cp:
+                    env_goal_dict['env'].append(buffers['frame'][-1][-1])
+                    env_goal_dict['goal'].append(buffers['goal'][-1][-1])
+                    env_goal_dict['frame'].append(frames)
                     cp += 1
-                    with open('frames_goals.pkl', 'wb') as file:
+                    with open(os.path.join(flags.savedir,flags.xpid,'frames_goals.pkl'), 'wb') as file:
                         pkl.dump(env_goal_dict, file)
 
 
