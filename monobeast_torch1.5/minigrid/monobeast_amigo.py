@@ -959,7 +959,6 @@ def train(flags):
         if flags.save_env:
             env_goal_dict = {'frame':[], 'env':[], 'goal':[]}
             cp = 0
-
         
         while frames < flags.total_frames:
             start_frames = frames
@@ -976,9 +975,6 @@ def train(flags):
                     env_goal_dict['goal'].append(buffers['goal'][-1][-1])
                     env_goal_dict['frame'].append(frames)
                     cp += 1
-                    with open(os.path.join(flags.savedir,flags.xpid,'frames_goals.pkl'), 'wb') as file:
-                        pkl.dump(env_goal_dict, file)
-
 
             fps = (frames - start_frames) / (timer() - start_time)
             if stats.get("episode_returns", None):
@@ -996,6 +992,11 @@ def train(flags):
                 mean_return,
                 pprint.pformat(stats),
             )
+
+        # Dump a pickle with the environments if save_env is true
+        if flags.save_env:
+            with open(os.path.join(flags.savedir, flags.xpid, 'frames_goals.pkl'), 'wb') as file:
+                pkl.dump(env_goal_dict, file)
 
     except KeyboardInterrupt:
         return  # Try joining actors then quit.
