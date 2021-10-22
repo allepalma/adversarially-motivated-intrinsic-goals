@@ -957,7 +957,7 @@ def train(flags):
         last_checkpoint_time = timer()
 
         if flags.save_env:
-            env_goal_dict = {'frame':[],'env':[], 'goal':[]}
+            env_goal_dict = {'frame':[], 'env':[], 'goal':[]}
             cp = 0
 
         
@@ -996,10 +996,6 @@ def train(flags):
                 mean_return,
                 pprint.pformat(stats),
             )
-
-        if flags.save_env:
-            with open('frames_goals.pkl', 'wb') as file:
-                pkl.dump(env_goal_dict, file)
 
     except KeyboardInterrupt:
         return  # Try joining actors then quit.
