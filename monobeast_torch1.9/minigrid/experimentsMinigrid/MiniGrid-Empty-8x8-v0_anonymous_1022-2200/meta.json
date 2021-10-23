@@ -50,10 +50,10 @@
         "total_frames": 600000000,
         "unroll_length": 100,
         "use_lstm": false,
-        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1022-1253"
+        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1022-2200"
     },
     "date_end": null,
-    "date_start": "2021-10-22 12:53:44.976275",
+    "date_start": "2021-10-22 22:00:04.305351",
     "env": {
         "ALLUSERSPROFILE": "C:\\ProgramData",
         "APPDATA": "C:\\Users\\aless\\AppData\\Roaming",
@@ -72,7 +72,7 @@
         "DRIVERDATA": "C:\\Windows\\System32\\Drivers\\DriverData",
         "HOMEDRIVE": "C:",
         "HOMEPATH": "\\Users\\aless",
-        "IDEA_INITIAL_DIRECTORY": "C:\\Users\\aless\\Desktop\\Netherlands\\courses\\semseter3\\SARL\\gits\\adversarially-motivated-intrinsic-goals\\monobeast_torch1.9\\minigrid",
+        "IDEA_INITIAL_DIRECTORY": "C:\\Users\\aless\\Desktop\\Netherlands\\courses\\semseter3\\SARL\\gits\\adversarially-motivated-intrinsic-goals\\monobeast_torch1.5\\minigrid",
         "LOCALAPPDATA": "C:\\Users\\aless\\AppData\\Local",
         "LOGONSERVER": "\\\\LAPTOP-O7STCL3R",
         "NUMBER_OF_PROCESSORS": "8",
@@ -117,11 +117,11 @@
     },
     "git": {
         "branch": "master",
-        "commit": "55ad319eb73206587d04244ee625217450b75308",
+        "commit": "49f65811ad1fabeec2534612f20c3660ee7f06a1",
         "is_dirty": true,
         "path": "C:\\Users\\aless\\Desktop\\Netherlands\\courses\\semseter3\\SARL\\gits\\adversarially-motivated-intrinsic-goals\\.git"
     },
     "slurm": null,
     "successful": false,
-    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1022-1253"
+    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1022-2200"
 }

@@ -957,7 +957,9 @@ def train(flags):
         last_checkpoint_time = timer()
 
         if flags.save_env:
-            env_goal_dict = {'frame':[], 'env':[], 'goal':[]}
+            env_goal_dict = {'frame':torch.zeros(flags.total_frames//flags.save_every,1),
+                             'env':torch.zeros((flags.total_frames//flags.save_every,env.width, env.height, 3)),
+                             'goal':torch.zeros(flags.total_frames//flags.save_every,1)}
             cp = 0
         
         while frames < flags.total_frames:
@@ -971,9 +973,9 @@ def train(flags):
             # Save the environment and the goal
             if flags.save_env:
                 if frames // flags.save_every > cp:
-                    env_goal_dict['env'].append(buffers['frame'][-1][-1])
-                    env_goal_dict['goal'].append(buffers['goal'][-1][-1])
-                    env_goal_dict['frame'].append(frames)
+                    env_goal_dict['env'][cp] = buffers['frame'][-1][-1]
+                    env_goal_dict['goal'][cp] = buffers['goal'][-1][-1]
+                    env_goal_dict['frame'][cp] = frames
                     cp += 1
 
             fps = (frames - start_frames) / (timer() - start_time)
