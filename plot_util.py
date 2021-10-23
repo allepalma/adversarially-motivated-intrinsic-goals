@@ -82,7 +82,7 @@ print('Saved results to {}{}_window{}.png'.format(plots_dir, env_dict[env], wind
 if plot_extras:
     current_target = current_target[1].to_numpy()
     generator_rewards = generator_rewards[1].to_numpy()
-    mean_intrinsic_reward = mean_episode_return[1].to_numpy()
+    mean_intrinsic_reward = mean_intrinsic_reward[1].to_numpy()
 
     # Remove nans
     frames_not_nan = frames[0][~np.isnan(current_target)]
