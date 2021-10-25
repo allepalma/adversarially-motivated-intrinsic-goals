@@ -9,10 +9,12 @@ results_dir = 'results/'
 # dictionary of environments
 env_dict = {
     'KC': 'KeyCorridorS3R3',
-    'OM': 'ObstructedMaze-1Dl'
+    'OM': 'ObstructedMaze-1Dl',
+    'medhard_OM': 'ObstructedMaze-2Dlhb-v0',
+    'hard_KC': 'KeyCorridorS4R3-v0',
 }
 # set environment to plot, for now KC/OM
-env = 'KC'
+env = 'hard_KC'
 # set directory to save plots
 plots_dir = 'plot_results/'
 # window for rolling mean
