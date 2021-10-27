@@ -1,0 +1,1 @@
+_tick,_time,frames,total_loss,mean_episode_return,pg_loss,baseline_loss,entropy_loss,gen_rewards,gg_loss,generator_entropy_loss,generator_baseline_loss,mean_intrinsic_rewards,mean_episode_steps,ex_reward,generator_current_target

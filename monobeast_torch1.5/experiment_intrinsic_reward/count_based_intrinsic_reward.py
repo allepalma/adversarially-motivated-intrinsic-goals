@@ -20,6 +20,7 @@ import traceback
 import pprint
 import typing
 import pickle as pkl
+import numpy as np
 
 import torch
 from torch import multiprocessing as mp
@@ -898,7 +899,7 @@ def train(flags):
     # Deal with the multi-processing framework
     actor_processes = []
     # Create a multiprocessing spawn object and the relative queues
-    ctx = mp.get_context("spawn")
+    ctx = mp.get_context("fork")
     free_queue = ctx.SimpleQueue()
     full_queue = ctx.SimpleQueue()
 
