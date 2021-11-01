@@ -55,10 +55,10 @@
         "use_lstm": false,
         "video_path": "minigrid_video.mp4",
         "weight_path": "model.tar",
-        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-1522"
+        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-2013"
     },
     "date_end": null,
-    "date_start": "2021-10-27 15:22:48.113352",
+    "date_start": "2021-10-27 20:13:43.364451",
     "env": {
         "ALLUSERSPROFILE": "C:\\ProgramData",
         "APPDATA": "C:\\Users\\aless\\AppData\\Roaming",
@@ -86,7 +86,7 @@
         "ONEDRIVECONSUMER": "C:\\Users\\aless\\OneDrive",
         "ONLINESERVICES": "Online Services",
         "OS": "Windows_NT",
-        "PATH": "C:\\Users\\aless\\anaconda3\\envs\\amigo;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\mingw-w64\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\usr\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Scripts;C:\\Users\\aless\\anaconda3\\envs\\amigo\\bin;C:\\Users\\aless\\anaconda3\\condabin;C:\\Program Files\\Python38\\Scripts;C:\\Program Files\\Python38;C:\\Program Files\\copasi.org\\COPASI 4.29.228\\bin;C:\\Program Files\\Common Files\\Oracle\\Java\\javapath;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\iCLS;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\iCLS;C:\\windows\\system32;C:\\windows;C:\\windows\\System32\\Wbem;C:\\windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\DAL;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\DAL;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\IPT;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\IPT;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\PuTTY;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0;C:\\WINDOWS\\System32\\OpenSSH;C:\\Program Files\\MiKTeX\\miktex\\bin\\x64;C:\\Program Files\\Git\\cmd;C:\\Program Files\\MATLAB\\R2020b\\runtime\\win64;C:\\Program Files\\MATLAB\\R2020b\\bin;C:\\Qt\\4.8.6\\bin;C:\\Program Files\\Microsoft SQL Server\\110\\Tools\\Binn;C:\\Users\\aless\\AppData\\Local\\pyppeteer;C:\\Users\\aless\\ffmpeg\\bin;.;C:\\Program Files\\Git LFS;C:\\Program Files\\OpenBabel-2.4.1;C:\\Users\\aless\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\aless\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Program Files\\cmake-3.20.2-windows-x86_64\\bin;C:\\Qt\\4.8.6\\bin;C:\\Program Files\\JetBrains\\PyCharm Community Edition 2021.2.2\\bin;.;C:\\Users\\aless\\ffmpeg\\bin;.;C:\\Users\\aless\\anaconda3\\envs\\amigo\\lib\\site-packages\\numpy\\.libs",
+        "PATH": "C:\\Users\\aless\\anaconda3\\envs\\amigo\\lib\\site-packages\\torch\\lib;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\mingw-w64\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\usr\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Library\\bin;C:\\Users\\aless\\anaconda3\\envs\\amigo\\Scripts;C:\\Users\\aless\\anaconda3\\envs\\amigo\\bin;C:\\Users\\aless\\anaconda3\\condabin;C:\\Program Files\\Python38\\Scripts;C:\\Program Files\\Python38;C:\\Program Files\\copasi.org\\COPASI 4.29.228\\bin;C:\\Program Files\\Common Files\\Oracle\\Java\\javapath;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\iCLS;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\iCLS;C:\\windows\\system32;C:\\windows;C:\\windows\\System32\\Wbem;C:\\windows\\System32\\WindowsPowerShell\\v1.0;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\DAL;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\DAL;C:\\Program Files (x86)\\Intel\\Intel(R) Management Engine Components\\IPT;C:\\Program Files\\Intel\\Intel(R) Management Engine Components\\IPT;C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common;C:\\Program Files\\PuTTY;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0;C:\\WINDOWS\\System32\\OpenSSH;C:\\Program Files\\MiKTeX\\miktex\\bin\\x64;C:\\Program Files\\Git\\cmd;C:\\Program Files\\MATLAB\\R2020b\\runtime\\win64;C:\\Program Files\\MATLAB\\R2020b\\bin;C:\\Qt\\4.8.6\\bin;C:\\Program Files\\Microsoft SQL Server\\110\\Tools\\Binn;C:\\Users\\aless\\AppData\\Local\\pyppeteer;C:\\Users\\aless\\ffmpeg\\bin;.;C:\\Program Files\\Git LFS;C:\\Program Files\\OpenBabel-2.4.1;C:\\Users\\aless\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\aless\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Program Files\\cmake-3.20.2-windows-x86_64\\bin;C:\\Qt\\4.8.6\\bin;C:\\Program Files\\JetBrains\\PyCharm Community Edition 2021.2.2\\bin;.;C:\\Users\\aless\\ffmpeg\\bin;.;C:\\Users\\aless\\anaconda3\\envs\\amigo\\lib\\site-packages\\numpy\\.libs",
         "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.PY;.PYW",
         "PLATFORMCODE": "KV",
         "PROCESSOR_ARCHITECTURE": "AMD64",
@@ -123,11 +123,11 @@
     },
     "git": {
         "branch": "intrisinc_reward_experiments",
-        "commit": "547c1e8d600c10f47cd5e8a23729383cb23aa4e0",
+        "commit": "71fecadaee71cfe42db6abdc9360fef7d03c9579",
         "is_dirty": true,
         "path": "C:\\Users\\aless\\Desktop\\Netherlands\\courses\\semseter3\\SARL\\gits\\adversarially-motivated-intrinsic-goals\\.git"
     },
     "slurm": null,
     "successful": false,
-    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-1522"
+    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-2013"
 }

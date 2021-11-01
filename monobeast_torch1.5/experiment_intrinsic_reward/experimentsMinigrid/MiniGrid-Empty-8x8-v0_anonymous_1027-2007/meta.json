@@ -55,10 +55,10 @@
         "use_lstm": false,
         "video_path": "minigrid_video.mp4",
         "weight_path": "model.tar",
-        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-1521"
+        "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-2007"
     },
     "date_end": null,
-    "date_start": "2021-10-27 15:21:51.086870",
+    "date_start": "2021-10-27 20:07:51.740131",
     "env": {
         "ALLUSERSPROFILE": "C:\\ProgramData",
         "APPDATA": "C:\\Users\\aless\\AppData\\Roaming",
@@ -123,11 +123,11 @@
     },
     "git": {
         "branch": "intrisinc_reward_experiments",
-        "commit": "547c1e8d600c10f47cd5e8a23729383cb23aa4e0",
+        "commit": "71fecadaee71cfe42db6abdc9360fef7d03c9579",
         "is_dirty": true,
         "path": "C:\\Users\\aless\\Desktop\\Netherlands\\courses\\semseter3\\SARL\\gits\\adversarially-motivated-intrinsic-goals\\.git"
     },
     "slurm": null,
     "successful": false,
-    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-1521"
+    "xpid": "MiniGrid-Empty-8x8-v0_anonymous_1027-2007"
 }
