@@ -124,6 +124,8 @@ parser.add_argument('--generator_maximum', default=100, type=float,
                     help='Maximum difficulty')                    
 parser.add_argument('--generator_reward_coef', default=1.0, type=float,
                     help='Coefficient for the generator reward')
+parser.add_argument('--generator_window', default=10, type=int,
+                    help='Window for current target counts')
 
 # Map Layout 
 parser.add_argument('--fix_seed', action='store_true',
@@ -611,7 +613,10 @@ def learn(
                 def distance2(episode_step, reached, targ=flags.generator_target):
                     """The function implementing the reward system for the agent"""
                     aux = flags.generator_reward_negative * torch.ones(episode_step.shape).to(device=flags.device)
-                    aux += (episode_step >= targ).float() * reached
+                    #print((episode_step >= targ and episode_step <= targ+flags.generator_window).float())
+                    #print((episode_step >= targ).float())
+                    aux += torch.logical_and(episode_step >= targ, episode_step <= targ+flags.generator_window).float() * reached
+                    #aux += (episode_step >= targ).float() * reached
                     return aux             
 
                 if flags.generator_loss_form == 'gaussian':
