@@ -1102,8 +1102,7 @@ def test(flags):
         env_output = env.step(agent_output["action"])
         done = env_output['done']
     video_recorder.close()
-    video_recorder.enabled = False
-    return 
+    video_recorder.enabled = False 
 
 
 def init(module, weight_init, bias_init, gain=1):
