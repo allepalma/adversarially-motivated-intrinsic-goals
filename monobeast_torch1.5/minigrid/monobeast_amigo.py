@@ -1103,7 +1103,7 @@ def test(flags):
         done = env_output['done']
     video_recorder.close()
     video_recorder.enabled = False
-    return state_dict
+    return 
 
 
 def init(module, weight_init, bias_init, gain=1):
