@@ -47,8 +47,9 @@ from env_utils import Observation_WrapperSetup, FrameStack
 # We start t* at 7 steps.
 generator_batch = dict()
 generator_batch_aux = dict()
-generator_current_target = 7.0
-generator_count = 0
+generator_current_target = 100
+generator_count_increment = 0
+generator_count_decrement = 0
 
 # yapf: disable
 parser = argparse.ArgumentParser(description='PyTorch Scalable Agent')
@@ -124,6 +125,8 @@ parser.add_argument('--generator_maximum', default=100, type=float,
                     help='Maximum difficulty')                    
 parser.add_argument('--generator_reward_coef', default=1.0, type=float,
                     help='Coefficient for the generator reward')
+parser.add_argument('--window', default=100, type=float,
+                    help='Window around optimal t*')
 
 # Map Layout 
 parser.add_argument('--fix_seed', action='store_true',
@@ -551,7 +554,8 @@ def learn(
             global generator_batch
             global generator_batch_aux
             global generator_current_target
-            global generator_count
+            global generator_count_increment
+            global generator_count_decrement
             global goal_count_dict
 
             # Loading Batch
@@ -611,7 +615,10 @@ def learn(
                 def distance2(episode_step, reached, targ=flags.generator_target):
                     """The function implementing the reward system for the agent"""
                     aux = flags.generator_reward_negative * torch.ones(episode_step.shape).to(device=flags.device)
-                    aux += (episode_step >= targ).float() * reached
+                    #aux += (episode_step >= targ).float() * reached
+                    aux += torch.logical_and(torch.tensor(episode_step >= targ-flags.window),
+                                             torch.tensor(episode_step <= targ+flags.window)).float() * reached
+                    #aux += torch.tensor(episode_step <= targ+flags.window).float() * reached
                     return aux             
 
                 if flags.generator_loss_form == 'gaussian':
@@ -633,14 +640,21 @@ def learn(
 
                     # If the mean reward is higher than a pre-defined threshold, we increase the difficulty
                 if torch.mean(generator_rewards).item() >= flags.generator_threshold:
-                    generator_count += 1
+                    generator_count_decrement += 1
                 else:
-                    generator_count = 0
+                    generator_count_increment += 1
 
                 # Increasing difficulty means increasing t*
-                if generator_count >= flags.generator_counts and generator_current_target<=flags.generator_maximum:
+                if (generator_count_decrement >= flags.generator_counts and generator_current_target > 20) or (torch.mean(generator_batch['ex_reward']) >= 0.8):
+                    generator_current_target -= 1.0
+                    generator_count_decrement = 0
+                    generator_count_increment = 0
+                    goal_count_dict *= 0.0
+
+                elif generator_count_increment >= flags.generator_counts and generator_current_target < 270:
                     generator_current_target += 1.0
-                    generator_count = 0
+                    generator_count_decrement = 0
+                    generator_count_increment = 0
                     goal_count_dict *= 0.0
 
                 # If we want for the teacher to identify where the environment changes the most (False by default)
@@ -1098,7 +1112,7 @@ def test(flags):
         done = env_output['done']
     video_recorder.close()
     video_recorder.enabled = False
-    return
+    return state_dict
 
 
 def init(module, weight_init, bias_init, gain=1):

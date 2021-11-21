@@ -517,6 +517,8 @@ def learn(
             "pg_loss": pg_loss.item(),
             "baseline_loss": baseline_loss.item(),
             "entropy_loss": entropy_loss.item(),
+            "generator_external_reward" : None,
+            "generator_internal_reward" : None,
             "gen_rewards": None,  
             "gg_loss": None,
             "generator_baseline_loss": None,
@@ -663,7 +665,10 @@ def learn(
                     generator_clipped_rewards = torch.clamp(generator_rewards, -1, 1)
 
                 if not flags.no_extrinsic_rewards:
-                    generator_clipped_rewards = 1.0 * (generator_batch['ex_reward'] > 0).float() + generator_clipped_rewards * (generator_batch['ex_reward'] <= 0).float()
+                    # Partialize the generator's reward
+                    external = 1.0 * (generator_batch['ex_reward'] > 0).float() # Due to external reward
+                    internal = generator_clipped_rewards * (generator_batch['ex_reward'] <= 0).float()
+                    generator_clipped_rewards = external + internal
 
                 generator_discounts = torch.zeros(generator_batch['episode_step'].shape).float().to(device=flags.device)
 
@@ -704,6 +709,8 @@ def learn(
                 generator_total_loss = gg_loss + generator_entropy_loss +generator_baseline_loss
 
                 intrinsic_rewards_gen = generator_batch['reached']*(1- 0.9 * (generator_batch["episode_step"].float()/max_steps))
+                stats['generator_external_reward'] = torch.mean(external[external!=0]).item()
+                stats['generator_internal_reward'] = torch.mean(internal[internal!=0]).item()
                 stats["gen_rewards"] = torch.mean(generator_clipped_rewards).item()  
                 stats["gg_loss"] = gg_loss.item() 
                 stats["generator_baseline_loss"] = generator_baseline_loss.item() 
@@ -889,6 +896,8 @@ def train(flags):
         "entropy_loss",
         "gen_rewards",  
         "gg_loss",
+        "generator_external_reward",
+        "generator_internal_reward",
         "generator_entropy_loss",
         "generator_baseline_loss",
         "mean_intrinsic_rewards",
@@ -1098,7 +1107,7 @@ def test(flags):
         done = env_output['done']
     video_recorder.close()
     video_recorder.enabled = False
-    return
+    return state_dict
 
 
 def init(module, weight_init, bias_init, gain=1):
