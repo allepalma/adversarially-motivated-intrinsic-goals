@@ -285,8 +285,8 @@ def act(
                 torch.tensor(episode_state_count_dict.get(episode_state_key))
 
             # Reset the episode state counts when the episode is over
-            if env_output['done'][0][0]:  # Simply access the done tensor's entry in the environment
-                episode_state_count_dict = dict()
+            if env_output['done'][0].item():  # Simply access the done tensor's entry in the environment
+                episode_state_count_dict = dict()            
 
             # Do new rollout
             for t in range(flags.unroll_length):
@@ -329,7 +329,7 @@ def act(
                     torch.tensor(episode_state_count_dict.get(episode_state_key))
 
                 # Reset the episode state counts when the episode is over
-                if env_output['done'][0][0]:  # Simply access the done tensor's entry in the environment
+                if env_output['done'][0].item():  # Simply access the done tensor's entry in the environment
                     episode_state_count_dict = dict()
 
                 timings.time("write")
@@ -427,7 +427,7 @@ def learn(
         rnd_novelty_t = torch.norm(predicted_embedding_t.detach() - random_embedding_t.detach(), dim=2, p=2)
         mask_intrinsic_reward = batch['episode_state_count'][1:] == 1
         clamped_rnd_novelty = torch.clamp(rnd_novelty_tplus1 - rnd_novelty_t, min = 0, max = None)
-        intrinsic_rewards = 0.05*clamped_rnd_novelty*mask_intrinsic_reward
+        intrinsic_rewards = 0.1*clamped_rnd_novelty*mask_intrinsic_reward
 
         # Compute rnd loss
         rnd_loss = 0.1*compute_forward_dynamics_loss(predicted_embedding_tplus1, random_embedding_tplus1.detach())
