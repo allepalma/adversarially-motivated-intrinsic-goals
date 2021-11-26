@@ -70,7 +70,7 @@ logging.basicConfig(
 
 
 
-# yapf: disable
+# User-defined input variables
 parser = argparse.ArgumentParser(description='PyTorch Scalable Agent')
 
 parser.add_argument('--env', type=str, default='MiniGrid-Empty-8x8-v0',
@@ -80,6 +80,12 @@ parser.add_argument('--mode', default='train',
                     help='Training or test mode.')
 parser.add_argument('--xpid', default=None,
                     help='Experiment id (default: None).')
+
+# Variables for model to run
+parser.add_argument('--model', default='default',
+                    choices=['default', 'novelty_based', 'novelty_based_no_generator'],
+                    help='Training or test mode.')
+
 
 # Training settings.
 parser.add_argument('--disable_checkpoint', action='store_true',
@@ -99,7 +105,7 @@ parser.add_argument('--disable_cuda', action='store_true',
 
 # Loss settings.
 parser.add_argument('--entropy_cost', default=0.0005, type=float,
-                    help='Entropy cost/multiplier.')
+                    help='Entropy cost/multiplier.')  # Student entropy cost
 parser.add_argument('--generator_entropy_cost', default=0.05, type=float,
                     help='Entropy cost/multiplier.')
 parser.add_argument('--baseline_cost', default=0.5, type=float,
@@ -108,7 +114,7 @@ parser.add_argument('--discounting', default=0.99, type=float,
                     help='Discounting factor.')
 parser.add_argument('--reward_clipping', default='abs_one',
                     choices=['abs_one', 'soft_asymmetric', 'none'],
-                    help='Reward clipping.')
+                    help='Reward clipping.')  # What kind of clipping is applied to the intrinsic reward
 
 # Optimizer settings.
 parser.add_argument('--learning_rate', default=0.001, type=float,
@@ -211,6 +217,11 @@ parser.add_argument('--record_video', action='store_true',
 parser.add_argument('--video_path', default='minigrid_video.mp4',type = str,
                     help='Path for saving the video')
 
+
+'''
+Act function to perform actions in the environment. A pre-defined set of IMPALA actors parametrized by the learner 
+policy collect experience batches in the environment.
+'''
 def act(
     actor_index: int,
     free_queue: mp.SimpleQueue,
@@ -222,6 +233,7 @@ def act(
     """Defines and generates IMPALA actors in multiples threads."""
 
     try:
+        # Logging and seed
         logging.info("Actor %i started.", actor_index)
         timings = prof.Timings()  # Keep track of how fast things are.
         gym_env = create_env(flags)# Create environment instance
@@ -246,15 +258,14 @@ def act(
         generator_output = generator_model(env_output)
         goal = generator_output["goal"]
 
-        # Use the agent to act in the environment. unused_state is the unused_object
-        # dumped cause we are not using LSTMs
+        # Use the agent to act in the environment
         agent_output, unused_state = model(env_output, agent_state, goal)
         while True:
-            # Remove and return an item from the queue
+            # Remove and return an item from the queue associating to free indexes in the experience buffer
             index = free_queue.get()
             if index is None:
                 break
-            # Write old rollout end
+            # Append the results from the first rollout to the experience buffer
             for key in env_output:
                 buffers[key][index][0, ...] = env_output[key]
             for key in agent_output:
@@ -265,12 +276,13 @@ def act(
             for i, tensor in enumerate(agent_state):
                 initial_agent_state_buffers[index][i][...] = tensor
 
-            # Do new rollout
+            # Perform the new rollout
             for t in range(flags.unroll_length):
                 aux_steps = 0
                 timings.reset()
 
-                if flags.modify:  # Will probably be False
+                # True if the goal is reached when the associated tile is modified by the agent
+                if flags.modify:
                     new_frame = torch.flatten(env_output['frame'], 2, 3)
                     old_frame = torch.flatten(initial_frame, 2, 3)
                     ans = new_frame == old_frame
@@ -286,16 +298,17 @@ def act(
                     agent_location = agent_location.view(agent_output["action"].shape)
                     reached_condition = goal == agent_location
 
-                if reached_condition:   # Generate new goal when reached intrinsic goal
+                # Generate new goal when reached intrinsic goal
+                if reached_condition:
                     if flags.restart_episode:
-                        env_output = env.initial() 
+                        env_output = env.initial()  # If the episode should be restarted as a whole after reaching the goal
                     else:
                         env.episode_step = 0  # Reset the number of steps in the episode
                     initial_frame = env_output['frame']
                     # Inference, so no requirement of the gradient
                     with torch.no_grad():
                         # Generate new goal
-                        generator_output = generator_model(env_output)
+                        generator_output = generator_model(env_output)  # Predict the new goal
                     goal = generator_output["goal"]
 
                 if env_output['done'][0] == 1:  # Generate a New Goal when episode finished
@@ -325,7 +338,7 @@ def act(
                 buffers["initial_frame"][index][t + 1, ...] = initial_frame     
 
                 timings.time("write")
-            # Put it back in the full queue of processes
+            # Put the occupied index of the batch filled back into the full queue of processes
             full_queue.put(index)
         if actor_index == 0:
             logging.info("Actor %i: %s", actor_index, timings.summary())
@@ -337,6 +350,10 @@ def act(
         traceback.print_exc()
         print()
         raise e
+
+
+
+
 
 def learn(
     actor_model, model, actor_generator_model, generator_model, batch, initial_agent_state, optimizer,
