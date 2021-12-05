@@ -82,7 +82,7 @@ OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
 ```
 The --window flag can be changed to any preferred value. 
 
-## Train AMIGo with BeBold novelty IR function
+## Train AMIGo with BeBold IR function
 
 ```bash
 # Run AMIGo on MiniGrid Environment
