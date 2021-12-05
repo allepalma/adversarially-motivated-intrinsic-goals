@@ -53,60 +53,59 @@ pip install -r requirements.txt
 
 # Running Experiments
 
+Three main experiments can be reproduced via the main/main.py script:
+* The default AMIGo run
+* AMIGo with adaptive t* threshold
+* An AMIGo model where the intrinsic reward function is substituted with one derived from random network distillation 
+
 ## Train AMIGo on MiniGrid
 
 ```bash
 # Run AMIGo on MiniGrid Environment
-OMP_NUM_THREADS=1 python -m monobeast.minigrid.monobeast_amigo --env MiniGrid-KeyCorridorS5R3-v0 \
+OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
 --num_actors 40 --modify --generator_batch_size 150 --generator_entropy_cost .05 \
---generator_threshold -.5 --total_frames 600000000 --generator_reward_negative -.3 \
---savedir ./experimentMinigrid
+--generator_threshold -.5 --total_frames 100000000 --generator_reward_negative -.3 \
+--savedir ./experimentMinigrid --model default
 ```
-Please be sure to use --total_frames as in the paper: <br>
-6e8 for KeyCorridorS4R3-v0, KeyCorridorS5R3-v0, ObstructedMaze-2Dlhb-v0, ObstructedMaze-1Q-v0 <br>
-3e7 for KeyCorridorS3R3 and ObstructedMaze-1Dl-v0
 
-Moreover, the flag ```--disable_checkpoints``` should be only used if the user does not want to save the model parameters
+In our project, we mostly worked on the MiniGrid-KeyCorridorS3R3-v0 envronment. However, the main.py script can be run
+on any other available MiniGrid envoronment as well. 
 
+## Train AMIGo with adaptive t* threshold
+
+```bash
+# Run AMIGo on MiniGrid Environment
+OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
+--num_actors 40 --modify --generator_batch_size 150 --generator_entropy_cost .05 \
+--generator_threshold -.5 --total_frames 100000000 --generator_reward_negative -.3 \
+--savedir ./experimentMinigrid --model window_addaptive --window 50
+```
+The --window flag can be changed to any preferred value. 
+
+## Train AMIGo with BeBold novelty IR function
+
+```bash
+# Run AMIGo on MiniGrid Environment
+OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
+--num_actors 10 --modify --total_frames 100000000 \
+--savedir ./experimentMinigrid --model novelty_based
+```
+
+Less actors are employed since it yielded better learning outcomes. 
 
 ## Test AMIGo on MiniGrid
 
 ```bash
 # Run AMIGo on MiniGrid Environment
-OMP_NUM_THREADS=1 python -m monobeast.minigrid.monobeast_amigo --env trained_amigo_environment --mode test \
---weight_path path_to_saved_weights --record_video --video_path path_to_video.mp4
+OMP_NUM_THREADS=1 python -m main.main --env trained_amigo_environment  \
+--mode test --weight_path path_to_saved_weights --record_video --video_path path_to_video.mp4
 ```
+
+The flag --model followed by default, window_adaptive and novelty_based must as well be specified.
 
 If the flag ```--record_video``` is used, an mp4 video of a random rollout by the trained agent will be produced at the selected path. To record the video, ffmpeg must be installed.
 
-## Train the baselines on MiniGrid
-We used an open sourced [implementation](https://github.com/facebookresearch/impact-driven-exploration) of the exploration baselines (i.e. RIDE, RND, ICM, and Count). This code should be pulled in a separate local repository and run within a separate environment.
 
-```bash
-# create a new conda environment
-conda create -n ride python=3.7
-conda activate ride 
-
-# install dependencies
-git clone git@github.com:facebookresearch/impact-driven-exploration.git
-cd impact-driven-exploration
-pip install -r requirements.txt
-```
-
-To reproduce the baseline results in the paper, run:
-```bash
-OMP_NUM_THREADS=1 python -m python main.py --env MiniGrid-ObstructedMaze-1Q-v0 \
---intrinsic_reward_coef 0.01 --entropy_cost 0.0001
-```
-with the corresponding best values for the `--intrinsic_reward_coef` and `--entropy_cost` reported in the paper for each model. 
-
-Set `--model` to `ride`, `rnd`, `curiosity`, or `count` for RIDE, RND, ICM, or Count, respectively.
-
-Set `--use_fullobs_policy` for using a full view of the environment as input to the policy network. 
-
-Set `--use_fullobs_intrinsic` for using full views of the environment to compute the intrinsic reward. 
-
-The default uses a partial view of the environment for both the policy and the intrinsic reward.
 
 # License
 
