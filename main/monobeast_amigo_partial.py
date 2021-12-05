@@ -70,6 +70,8 @@ parser.add_argument('--xpid', default=None,
 parser.add_argument('--model', default='default',
                     choices=['default', 'window_adaptive','novelty_based'],
                     help='Choose the model to run')
+parser.add_argument('--window', default=50, type=float,
+                    help='The window for the adaptive method')
 
 
 # Training settings.
@@ -97,9 +99,6 @@ parser.add_argument('--baseline_cost', default=0.5, type=float,
                     help='Baseline cost/multiplier.')
 parser.add_argument('--discounting', default=0.99, type=float,
                     help='Discounting factor.')
-parser.add_argument('--reward_clipping', default='abs_one',
-                    choices=['abs_one', 'soft_asymmetric', 'none'],
-                    help='Reward clipping.')  # What kind of clipping is applied to the intrinsic reward
 
 # Optimizer settings.
 parser.add_argument('--learning_rate', default=0.001, type=float,
@@ -157,30 +156,14 @@ parser.add_argument('--disable_use_embedding', action='store_true',
                     help='Disable embeddings.')
 parser.add_argument('--no_extrinsic_rewards', action='store_true',
                     help='Only intrinsic rewards.')
-parser.add_argument('--no_generator', action='store_true',
-                    help='Use vanilla policy-deprecated')
 parser.add_argument('--intrinsic_reward_coef', default=1.0, type=float,
                     help='Coefficient for the intrinsic reward')
-parser.add_argument('--random_agent', action='store_true',
-                    help='Use a random agent to test the env.')
-parser.add_argument('--novelty', action='store_true',
-                    help='Discount rewards based on times goal has been proposed.')
-parser.add_argument('--novelty_bonus', default=0.1, type=float,
-                    help='Bonus you get for proposing objects if novelty')
-parser.add_argument('--novelty_coef', default=0.3, type=float,
-                    help='Modulates novelty bonus if novelty')
 parser.add_argument('--restart_episode', action='store_true',
                     help='Restart Episode when reaching intrinsic goal.')
 parser.add_argument('--modify', action='store_true',
                     help='Modify Goal instead of having to reach the goal')
 parser.add_argument('--no_boundary_awareness', action='store_true',
                     help='Remove Episode Boundary Awareness')
-parser.add_argument('--generator_loss_form', type=str, default='threshold',
-                    help='[threshold,dummy,gaussian, linear]')
-parser.add_argument('--generator_target', default=5.0, type=float,
-                    help='Mean target for Gassian and Linear Rewards')
-parser.add_argument('--target_variance', default=15.0, type=float,
-                    help='Variance for the Gaussian Reward')
 
 # Set your initials
 parser.add_argument('--initials', type=str, default='anonymous',
@@ -413,14 +396,8 @@ def learn(
         total_rewards = rewards + intrinsic_rewards
 
         # Perform reward clipping with chosen technique
-        if flags.reward_clipping == "abs_one":
-            clipped_rewards = torch.clamp(total_rewards, -1, 1)
-        elif flags.reward_clipping == "soft_asymmetric":
-            squeezed = torch.tanh(total_rewards / 5.0)
-            # Negative rewards are given less weight than positive rewards.
-            clipped_rewards = torch.where(total_rewards < 0, 0.3 * squeezed, squeezed) * 5.0
-        elif flags.reward_clipping == "none":
-            clipped_rewards = total_rewards
+        clipped_rewards = torch.clamp(total_rewards, -1, 1)
+
 
         # Discount where not done (end of episode)
         discounts = (~batch["done"]).float() * flags.discounting
@@ -512,23 +489,30 @@ def learn(
             # Reached is a variable of bools for all timesteps in all dimensions stating
             # whether the agent reached the goal or not at a certain time T in a batch B
             reached = reached_goal.type(torch.bool)
-            keys = ['frame', 'goal', 'episode_step', 'generator_logits', 'ex_reward', 'carried_obj',
-                    'carried_col']
+            keys = ['frame', 'episode_step', 'generator_logits', 'carried_obj', 'carried_col']
             if 'frame' in generator_batch.keys():
                 for key in keys:
                     generator_batch[key] = torch.cat((generator_batch[key], batch[key][is_done].float().to(device=flags.device)), 0)
                     generator_batch[key] = torch.cat((generator_batch[key], batch[key][reached].float().to(device=flags.device)), 0)
+                generator_batch['ex_reward'] = torch.cat((generator_batch['ex_reward'], batch['reward'][is_done].float().to(device=flags.device)), 0)
+                generator_batch['ex_reward'] = torch.cat((generator_batch['ex_reward'], batch['reward'][reached].float().to(device=flags.device)), 0)
                 generator_batch['reached'] = torch.cat((generator_batch['reached'],torch.zeros(batch['goal'].shape)[is_done].float().to(device=flags.device)), 0)
                 generator_batch['reached'] = torch.cat((generator_batch['reached'],torch.ones(batch['goal'].shape)[reached].float().to(device=flags.device)), 0)
+                generator_batch['goal'] = torch.cat((generator_batch['goal'], batch['goal'][is_done].to(device=flags.device)), 0)
+                generator_batch['goal'] = torch.cat((generator_batch['goal'], batch['goal'][reached].to(device=flags.device)), 0)
             else:
                 for key in keys:
                     if key != 'frame':
                         generator_batch[key] = (batch[key][is_done]).float().to(device=flags.device)
-                        generator_batch[key] = torch.cat((generator_batch[key], batch[key][reached].to(device=flags.device)), 0)
+                        generator_batch[key] = torch.cat((generator_batch[key], batch[key][reached].float().to(device=flags.device)), 0)
+                    generator_batch['ex_reward'] = (batch['reward'][is_done]).float().to(device=flags.device)
+                    generator_batch['ex_reward'] = torch.cat((generator_batch['ex_reward'], batch['reward'][reached].float().to(device=flags.device)), 0)     
                     generator_batch['frame'] = (batch['initial_frame'][is_done]).float().to(device=flags.device)
                     generator_batch['frame'] = torch.cat((generator_batch['frame'], batch['initial_frame'][reached].float().to(device=flags.device)), 0)
                     generator_batch['reached'] = (torch.zeros(batch['goal'].shape)[is_done]).float().to(device=flags.device)
                     generator_batch['reached'] = torch.cat((generator_batch['reached'], torch.ones(batch['goal'].shape)[reached].float().to(device=flags.device)), 0)
+                    generator_batch['goal'] = (batch['goal'][is_done]).to(device=flags.device)
+                    generator_batch['goal'] = torch.cat((generator_batch['goal'], batch['goal'][reached].to(device=flags.device)), 0)
 
             # Run Gradient step, keep batch residual in batch_aux
             if generator_batch['frame'].shape[0] >= flags.generator_batch_size: # Run Gradient step, keep batch residual in batch_aux
@@ -541,7 +525,7 @@ def learn(
                 # Get the generator value from the output of the generator model
                 generator_bootstrap_value = generator_outputs["generator_baseline"][-1]
 
-                def gen_reward(episode_step, reached, targ=flags.generator_target, adaptive = False):
+                def gen_reward(episode_step, reached, targ, adaptive = False):
                     """The function implementing the reward system for the agent"""
                     aux = flags.generator_reward_negative * torch.ones(episode_step.shape).to(device=flags.device)
                     if not adaptive:
@@ -763,10 +747,11 @@ def train(flags):
         actor_processes.append(actor)
 
     # Reassigned the Net object to learner_model
-    learner_model = StudentNet(env.observation_space.shape, env.action_space.n, no_generator = no_generator,
-                               state_embedding_dim=flags.state_embedding_dim, num_input_frames=flags.num_input_frames,
-                               use_lstm=flags.use_lstm, num_lstm_layers=flags.num_lstm_layers).to(device=flags.device)
-    if flags.model == 'novelty_based':
+    learner_model = StudentNet(env.observation_space.shape, env.action_space.n, goal_dim = flags.goal_dim,
+                       no_generator = no_generator, state_embedding_dim=flags.state_embedding_dim,
+                       num_input_frames=flags.num_input_frames,use_lstm=flags.use_lstm,
+                       num_lstm_layers=flags.num_lstm_layers).to(device=flags.device)
+    if flags.model != 'novelty_based':
         learner_generator_model = TeacherNet(env.observation_space.shape, env.width, env.height,
                                              num_input_frames=flags.num_input_frames).to(device=flags.device)
     else:
@@ -780,21 +765,25 @@ def train(flags):
         eps=flags.epsilon,
         alpha=flags.alpha,
     )
-
-    generator_model_optimizer = torch.optim.RMSprop(
-        learner_generator_model.parameters(),
-        lr=flags.generator_learning_rate,
-        momentum=flags.momentum,
-        eps=flags.epsilon,
-        alpha=flags.alpha)
-
+    
+    if flags.model != 'novelty_based':
+      generator_model_optimizer = torch.optim.RMSprop(
+          learner_generator_model.parameters(),
+          lr=flags.generator_learning_rate,
+          momentum=flags.momentum,
+          eps=flags.epsilon,
+          alpha=flags.alpha)
+      predictor_optimizer = []
+    
     # Optimizer for the predictor network
-    predictor_optimizer = torch.optim.RMSprop(
-        predictor_network.parameters(),
-        lr=flags.learning_rate,
-        momentum=flags.momentum,
-        eps=flags.epsilon,
-        alpha=flags.alpha)
+    else:
+      predictor_optimizer = torch.optim.RMSprop(
+          predictor_network.parameters(),
+          lr=flags.learning_rate,
+          momentum=flags.momentum,
+          eps=flags.epsilon,
+          alpha=flags.alpha)
+      generator_model_optimizer = []
 
     def lr_lambda(epoch):
         """Scheduling for alpha"""
@@ -804,6 +793,8 @@ def train(flags):
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     if flags.model != 'novelty_based':
         generator_scheduler = torch.optim.lr_scheduler.LambdaLR(generator_model_optimizer, lr_lambda)
+    else:
+      generator_scheduler = []
 
     logger = logging.getLogger("logfile")
     stat_keys = [
