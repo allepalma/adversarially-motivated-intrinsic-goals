@@ -101,7 +101,7 @@ OMP_NUM_THREADS=1 python -m main.main --env trained_amigo_environment  \
 --mode test --weight_path path_to_saved_weights --record_video --video_path path_to_video.mp4
 ```
 
-The flag --model followed by default, window_adaptive and novelty_based must as well be specified.
+The flag ```--model``` followed by default, window_adaptive and novelty_based must as well be specified.
 
 If the flag ```--record_video``` is used, an mp4 video of a random rollout by the trained agent will be produced at the selected path. To record the video, ffmpeg must be installed.
 
