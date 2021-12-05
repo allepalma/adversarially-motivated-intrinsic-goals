@@ -22,6 +22,14 @@ import gym_minigrid.wrappers as wrappers
 Buffers = typing.Dict[str, typing.List[torch.Tensor]]
 
 
+def compute_forward_dynamics_loss(pred_next_emb, next_emb):
+    """
+    Rnd loss
+    """
+    forward_dynamics_loss = torch.norm(pred_next_emb - next_emb, dim=2, p=2)
+    return torch.sum(torch.mean(forward_dynamics_loss, dim=1))
+
+
 def compute_baseline_loss(advantages):
     """
     Compute the loss on the value network
@@ -54,6 +62,7 @@ def compute_policy_gradient_loss(logits, actions, advantages):
     advantages.requires_grad = False
     policy_gradient_loss_per_timestep = cross_entropy * advantages
     return torch.sum(torch.mean(policy_gradient_loss_per_timestep, dim=1))
+
 
 def get_batch(
     flags,
@@ -92,15 +101,16 @@ def get_batch(
     return batch, initial_agent_state
 
 
-def reached_goal_func(frames, goals, initial_frames = None, done_aux = None):
+def reached_goal_func(frames, goals, modify = True, no_boundary_awareness = False,
+                      initial_frames = None, done_aux = None):
     """Auxiliary function which evaluates whether agent has reached the goal."""
-    if flags.modify:
+    if modify:
         new_frame = torch.flatten(frames, 2, 3)
         old_frame = torch.flatten(initial_frames, 2, 3)
         ans = new_frame == old_frame
         ans = torch.sum(ans, 3) != 3  # reached if the three elements are not the same
         reached = torch.squeeze(torch.gather(ans, 2, torch.unsqueeze(goals.long(),2)))
-        if flags.no_boundary_awareness:
+        if no_boundary_awareness:
             reached = reached.float() * (1 - done_aux.float())
         return reached
     else:
@@ -110,8 +120,6 @@ def reached_goal_func(frames, goals, initial_frames = None, done_aux = None):
         agent_location = agent_location[:,2]
         agent_location = agent_location.view(goals.shape)
         return (goals == agent_location).float()
-
-
 
 
 def create_buffers(obs_shape, num_actions, flags, width, height, logits_size) -> Buffers:
@@ -141,6 +149,7 @@ def create_buffers(obs_shape, num_actions, flags, width, height, logits_size) ->
         for key in buffers:
             buffers[key].append(torch.empty(**specs[key]).share_memory_())
     return buffers
+
 
 # For Minigrid environment creation
 class Minigrid2Image(gym.ObservationWrapper):

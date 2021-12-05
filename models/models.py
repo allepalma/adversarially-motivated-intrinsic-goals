@@ -10,47 +10,32 @@ import random
 import sys
 sys.path.insert(0,'../..')
 
-import argparse
-import logging
-import os
-import threading
-import time
-import timeit
-import traceback
-import pprint
-import typing
-import pickle as pkl
-
 import torch
-from torch import multiprocessing as mp
 from torch import nn
 from torch.nn import functional as F
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-import gym
-import gym_minigrid.wrappers as wrappers
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
-from torch.distributions.normal import Normal
-
-from torchbeast.core import environment
-from torchbeast.core import file_writer
-from torchbeast.core import prof
-from torchbeast.core import vtrace
-
-from env_utils import Observation_WrapperSetup, FrameStack
+"""
+Weight initializing function
+"""
+def init(module, weight_init, bias_init, gain=1):
+    """Global function initializing the weights and the bias of a module"""
+    weight_init(module.weight.data, gain=gain)
+    bias_init(module.bias.data)
+    return module
 
 
 """
 Model for the teacher
 """
 
-class Generator(nn.Module):
+class TeacherNet(nn.Module):
     """Constructs the Teacher Policy which takes an initial observation and produces a goal."""
-    def __init__(self, observation_shape, width, height, num_input_frames, hidden_dim=256):
-        super(Generator, self).__init__()
+    def __init__(self, observation_shape, width, height, num_input_frames, hidden_dim=256, inner = False):
+        super(TeacherNet, self).__init__()
         self.observation_shape = observation_shape
         self.height = height  # Height of grid
         self.width = width  # Width of grid
@@ -62,10 +47,7 @@ class Generator(nn.Module):
         self.col_dim = 3  # Three types of colour
         self.con_dim = 2  # Two conditions (door open/door closed)
         self.num_channels = (self.obj_dim + self.col_dim + self.con_dim) * num_input_frames
-
-        if flags.disable_use_embedding:
-            print("not_using_embedding")
-            self.num_channels = 3*num_input_frames
+        self.inner = inner
 
         # Initialize the embedding layers for the objects in the environment. They start from a certain vocabulary
         # size (11,6,4) and end with te required dimensionality
@@ -121,7 +103,7 @@ class Generator(nn.Module):
                             constant_(x, 0))
 
         # Change the dimensions of the environment if you exclude the outer wall
-        if flags.inner:
+        if self.inner:
             self.aux_env_dim = (self.height-2) * (self.width-2)
         else:
             self.aux_env_dim = self.env_dim
@@ -176,17 +158,13 @@ class Generator(nn.Module):
 
 
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
-        if flags.disable_use_embedding:
-            x = x.float() 
-            carried_obj = carried_obj.float()
-            carried_col = carried_col.float()
-        else:    
-            x = x.long()
-            carried_obj = carried_obj.long()
-            carried_col = carried_col.long()
-            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)], dim = 3)
-            carried_obj_emb = self._select(self.embed_object, carried_obj)
-            carried_col_emb = self._select(self.embed_color, carried_col)
+
+        x = x.long()
+        carried_obj = carried_obj.long()
+        carried_col = carried_col.long()
+        x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)], dim = 3)
+        carried_obj_emb = self._select(self.embed_object, carried_obj)
+        carried_col_emb = self._select(self.embed_color, carried_col)
               
         x = x.transpose(1, 3)
         carried_obj_emb = carried_obj_emb.view(T * B, -1)
@@ -206,7 +184,7 @@ class Generator(nn.Module):
         generator_baseline = generator_baseline.view(T, B)
         goal = goal.view(T, B)  # Transform goal to a 1x1 tensor
 
-        if flags.inner:
+        if self.inner:
             goal = self.convert_inner(goal)
 
         return dict(goal=goal, generator_logits=generator_logits, generator_baseline=generator_baseline)
@@ -215,34 +193,36 @@ class Generator(nn.Module):
 '''
 Model for the student 
 '''
-class MinigridNet(nn.Module):
+class StudentNet(nn.Module):
     """Constructs the Student Policy which takes an observation and a goal and produces an action."""
-    def __init__(self, observation_shape, num_actions, state_embedding_dim=256, num_input_frames=1, use_lstm=False, num_lstm_layers=1):
-        super(MinigridNet, self).__init__()
+    def __init__(self, observation_shape, num_actions, goal_dim, no_generator = False,
+                 state_embedding_dim=256, num_input_frames=1, use_lstm=False, num_lstm_layers=1):
+        super(StudentNet, self).__init__()
         self.observation_shape = observation_shape
         self.num_actions = num_actions  # The total number of actions to do
         self.state_embedding_dim = state_embedding_dim
         self.use_lstm = use_lstm
         self.num_lstm_layers = num_lstm_layers
+        self.no_generator = no_generator
 
         self.use_index_select = True
         self.obj_dim = 5
         self.col_dim = 3
         self.con_dim = 2
-        self.goal_dim = flags.goal_dim
+        self.goal_dim = goal_dim
         self.agent_loc_dim = 10
         # Same process as the teacher but add a 1 for goal layer
-        self.num_channels = (self.obj_dim + self.col_dim + self.con_dim + 1) * num_input_frames
-        
-        if flags.disable_use_embedding:
-            print("not_using_embedding")
-            self.num_channels = (3+1+1+1+1)*num_input_frames
+        if not self.no_generator:
+            self.num_channels = (self.obj_dim + self.col_dim + self.con_dim + 1) * num_input_frames
+        else:
+            self.num_channels = (self.obj_dim + self.col_dim + self.con_dim) * num_input_frames
 
         self.embed_object = nn.Embedding(11, self.obj_dim)
         self.embed_color = nn.Embedding(6, self.col_dim)
         self.embed_contains = nn.Embedding(4, self.con_dim)
-        self.embed_goal = nn.Embedding(self.observation_shape[0]*self.observation_shape[1] + 1, self.goal_dim)
         self.embed_agent_loc = nn.Embedding(self.observation_shape[0]*self.observation_shape[1] + 1, self.agent_loc_dim)
+        if not self.no_generator:
+            self.embed_goal = nn.Embedding(self.observation_shape[0] * self.observation_shape[1] + 1, self.goal_dim)
 
         # Weight initialization function
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
@@ -269,7 +249,6 @@ class MinigridNet(nn.Module):
             init_(nn.Linear(self.state_embedding_dim, self.state_embedding_dim)),
             nn.ReLU(),
         )
-
 
         if use_lstm:
             self.core = nn.LSTM(self.state_embedding_dim, self.state_embedding_dim, self.num_lstm_layers)
@@ -327,34 +306,31 @@ class MinigridNet(nn.Module):
        
         # -- [unroll_length*batch_size x height x width x channels]
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
-        goal = torch.flatten(goal, 0, 1)
+        if not self.no_generator:
+            goal = torch.flatten(goal, 0, 1)
 
-        # Creating goal_channel
-        goal_channel = torch.zeros_like(x, requires_grad=False)
-        goal_channel = torch.flatten(goal_channel, 1,2)[:,:,0]
-        for i in range(goal.shape[0]):  # Goal shape is 1 so only one iteration
-            goal_channel[i,goal[i]] = 1.0  # Place a 1 only in the board where the goal is
-        goal_channel = goal_channel.view(T*B, h, w, 1)  # Put it back to matrix like
+            # Creating goal_channel
+            goal_channel = torch.zeros_like(x, requires_grad=False)
+            goal_channel = torch.flatten(goal_channel, 1,2)[:,:,0]
+            for i in range(goal.shape[0]):  # Goal shape is 1 so only one iteration
+                goal_channel[i,goal[i]] = 1.0  # Place a 1 only in the board where the goal is
+            goal_channel = goal_channel.view(T*B, h, w, 1)  # Put it back to matrix like
         carried_col = inputs["carried_col"]
         carried_obj = inputs["carried_obj"]
 
-        if flags.disable_use_embedding:
-            x = x.float()
-            goal = goal.float()
-            carried_obj = carried_obj.float()
-            carried_col = carried_col.float()
-        else:    
-            x = x.long()
+        x = x.long()
+        carried_obj = carried_obj.long()
+        carried_col = carried_col.long()
+        # -- [B x H x W x K]
+        if not self.no_generator:
             goal = goal.long()
-            carried_obj = carried_obj.long()
-            carried_col = carried_col.long()
-            # -- [B x H x W x K]
-            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2), goal_channel.float()], dim = 3)
-            carried_obj_emb = self._select(self.embed_object, carried_obj)
-            carried_col_emb = self._select(self.embed_color, carried_col)
-
-        if flags.no_generator:
-            goal_emb = torch.zeros(goal_emb.shape, dtype=goal_emb.dtype, device=goal_emb.device, requires_grad = False) 
+            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2),
+                           goal_channel.float()], dim = 3)
+        else:
+            x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)],
+                          dim=3)
+        carried_obj_emb = self._select(self.embed_object, carried_obj)
+        carried_col_emb = self._select(self.embed_color, carried_col)
 
         x = x.transpose(1, 3)
         x = self.feat_extract(x)
@@ -395,9 +371,9 @@ class MinigridNet(nn.Module):
 '''
 Model for random network distillation
 '''
-class FullObsMinigridStateEmbeddingNet(nn.Module):
+class RandomDistillationNetwork(nn.Module):
     def __init__(self, observation_shape):
-        super(FullObsMinigridStateEmbeddingNet, self).__init__()
+        super(RandomDistillationNetwork, self).__init__()
         self.observation_shape = observation_shape
 
         self.use_index_select = True

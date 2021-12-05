@@ -7,7 +7,7 @@
 
 import gym
 import torch
-from collections import deque, defaultdict
+from collections import deque
 from gym import spaces
 import numpy as np
 from gym_minigrid.minigrid import OBJECT_TO_IDX, COLOR_TO_IDX
@@ -28,6 +28,7 @@ class Minigrid2Image(gym.ObservationWrapper):
     def observation(self, observation):
         return observation['image']
 
+
 class Observation_WrapperSetup:
     """Environment wrapper to format observation items into torch."""
     def __init__(self, gym_env, fix_seed=False, env_seed=1):
@@ -47,7 +48,6 @@ class Observation_WrapperSetup:
         if self.fix_seed:
             self.gym_env.seed(seed=self.env_seed)
         initial_frame = _format_observation(self.gym_env.reset())
-
 
         if self.gym_env.carrying:
             carried_col, carried_obj = torch.LongTensor([[COLOR_TO_IDX[self.gym_env.carrying.color]]]), torch.LongTensor([[OBJECT_TO_IDX[self.gym_env.carrying.type]]])
@@ -119,6 +119,7 @@ class Observation_WrapperSetup:
 
     def close(self):
         self.gym_env.close()
+
 
 class FrameStack(gym.Wrapper):
 
