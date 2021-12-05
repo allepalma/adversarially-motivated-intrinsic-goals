@@ -69,7 +69,7 @@ OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
 ```
 
 In our project, we mostly worked on the MiniGrid-KeyCorridorS3R3-v0 envronment. However, the main.py script can be run
-on any other available MiniGrid envoronment as well. 
+on any other available MiniGrid envoronment as well. The parameters here are the dafault ones from the paper.
 
 ## Train AMIGo with adaptive t* threshold
 
