@@ -64,7 +64,7 @@ Three main experiments can be reproduced via the main/main.py script:
 # Run AMIGo on MiniGrid Environment
 OMP_NUM_THREADS=1 python -m main.main --env MiniGrid-KeyCorridorS3R3-v0 \
 --num_actors 40 --modify --generator_batch_size 150 --generator_entropy_cost .05 \
---generator_threshold -.5 --total_frames 100000000 --generator_reward_negative -.3 \
+--generator_threshold -.1 --total_frames 100000000 --generator_reward_negative -.3 \
 --savedir ./experimentMinigrid --model default
 ```
 
