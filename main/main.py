@@ -22,7 +22,6 @@ import timeit
 import traceback
 import pprint
 import typing
-import pickle as pkl
 
 import torch
 from torch import multiprocessing as mp
@@ -515,7 +514,7 @@ def learn(
                     generator_batch['goal'] = torch.cat((generator_batch['goal'], batch['goal'][reached].to(device=flags.device)), 0)
 
             # Run Gradient step, keep batch residual in batch_aux
-            if generator_batch['frame'].shape[0] >= flags.generator_batch_size: # Run Gradient step, keep batch residual in batch_aux
+            if generator_batch['frame'].shape[0] >= flags.generator_batch_size:  # Run Gradient step, keep batch residual in batch_aux
                 for key in generator_batch:
                     # Keep only a batch of pre-defined size in the generator_batch and place the rest in the auxiliary one
                     generator_batch_aux[key] = generator_batch[key][flags.generator_batch_size:]
@@ -574,7 +573,10 @@ def learn(
                 # Prepare for IMPALA
                 # Clamp generator rewards
                 generator_clipped_rewards = torch.clamp(generator_rewards, -1, 1)
+                generator_clipped_rewards = 1.0 * (generator_batch['ex_reward'] > 0).float() + generator_clipped_rewards * \
+                                            (generator_batch['ex_reward'] <= 0).float()
                 generator_discounts = torch.zeros(generator_batch['episode_step'].shape).float().to(device=flags.device)
+
 
                 # Contains the number of the goal cell at each step
                 goals_aux = generator_batch["goal"]
