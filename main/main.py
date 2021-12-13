@@ -213,16 +213,14 @@ def act(
         if flags.num_input_frames > 1:
             gym_env = FrameStack(gym_env, flags.num_input_frames)
 
-        # Observation_WrapperSetup turns the environment into one that turns observations into torch format
+        # Observation_WrapperSetup turns the environment into a pytorch
         env = Observation_WrapperSetup(gym_env, fix_seed=flags.fix_seed, env_seed=flags.env_seed)
         # Dictionary with first observation
         env_output = env.initial()
         initial_frame = env_output['frame']
-
-        # Initialize state for student
         agent_state = model.initial_state(batch_size=1)
 
-        # Perform first action in the environment
+        # Initialize first environment observation
         if flags.model != 'novelty_based':
             # Get the goal from the teacher
             generator_output = generator_model(env_output)
@@ -249,7 +247,7 @@ def act(
                         buffers[key][index][t, ...] = generator_output[key]
                 buffers["initial_frame"][index][t, ...] = initial_frame
 
-                # Other round of episodic updates
+                # Update the episodic buffer (used for the novelty-based intrinsic reward)
                 episode_state_key = tuple(env_output['frame'].view(-1).tolist())
                 if episode_state_key in episode_state_count_dict:
                     episode_state_count_dict[episode_state_key] += 1  # Update count if already there
@@ -258,14 +256,13 @@ def act(
                 buffers['episode_state_count'][index][t, ...] = \
                     torch.tensor(episode_state_count_dict.get(episode_state_key))
                 # Reset the episode state counts when the episode is over
-                if env_output['done'][0].item():  # Simply access the done tensor's entry in the environment
+                if env_output['done'][0].item():
                     episode_state_count_dict = dict()
 
                 timings.reset()
 
-                # True if the goal is reached when the associated tile is modified by the agent
-
                 if flags.model != 'novelty_based':
+                    # True if the goal is reached when the associated tile is modified by the agent
                     if flags.modify:
                         new_frame = torch.flatten(env_output['frame'], 2, 3)
                         old_frame = torch.flatten(initial_frame, 2, 3)
@@ -284,8 +281,8 @@ def act(
 
                     # Generate new goal when reached intrinsic goal
                     if reached_condition:
-                        if flags.restart_episode:
-                            env_output = env.initial()  # If the episode should be restarted as a whole after reaching the goal
+                        if flags.restart_episode:  # If the episode should be restarted as a whole after reaching the goal
+                            env_output = env.initial()
                         else:
                             env.episode_step = 0  # Reset the number of steps in the episode
                         initial_frame = env_output['frame']
@@ -295,7 +292,7 @@ def act(
                             generator_output = generator_model(env_output)  # Predict the new goal
                         goal = generator_output["goal"]
 
-                if env_output['done'][0] == 1:  # Generate a New Goal when episode finished
+                if env_output['done'][0] == 1:  # Generate a New Goal when episode is finished
                     # Set the frame as the new initial_frame for the next iteration
                     initial_frame = env_output['frame']
                     if flags.model != 'novelty_based':
@@ -303,7 +300,7 @@ def act(
                             generator_output = generator_model(env_output)
                         goal = generator_output["goal"]
 
-                # If agent is still alive in episode, predict action
+                # If agent has not lost the episode, predict action
                 with torch.no_grad():
                     if flags.model != 'novelty_based':
                         agent_output, agent_state = model(env_output, agent_state, goal)
@@ -331,7 +328,7 @@ def act(
 
 
 '''
-The learn function implements the AMIGO loop and batch learning in order to optimize the policy network 
+The learn function implements the AMIGo loop and batch learning in order to optimize the policy network 
 '''
 
 
@@ -357,16 +354,20 @@ def learn(
                 .reshape(flags.unroll_length, flags.batch_size, 128)
 
             # Predict the intrinsic reward
+            # Novelty of states t and t+1
             rnd_novelty_tplus1 = torch.norm(predicted_embedding_tplus1.detach() - random_embedding_tplus1.detach(),
                                             dim=2, p=2)
             rnd_novelty_t = torch.norm(predicted_embedding_t.detach() - random_embedding_t.detach(), dim=2, p=2)
+            # Episodic count mask
             mask_intrinsic_reward = batch['episode_state_count'][1:] == 1
+            # Novelty-based intrinsic reward
             clamped_rnd_novelty = torch.clamp(rnd_novelty_tplus1 - rnd_novelty_t, min=0, max=None)
             intrinsic_rewards = 0.1 * clamped_rnd_novelty * mask_intrinsic_reward
             # Compute rnd loss
             rnd_loss = compute_forward_dynamics_loss(predicted_embedding_tplus1, random_embedding_tplus1.detach())
 
         else:
+            # Traditional reward by AMIGo
             next_frame = batch['frame'][1:].float().to(device=flags.device)
             initial_frames = batch['initial_frame'][1:].float().to(device=flags.device)
             done_aux = batch['done'][1:].float().to(device=flags.device)  # Get where the experience was done
@@ -394,9 +395,8 @@ def learn(
         # Compute total rewards
         total_rewards = rewards + intrinsic_rewards
 
-        # Perform reward clipping with chosen technique
+        # Perform reward clipping
         clipped_rewards = torch.clamp(total_rewards, -1, 1)
-
 
         # Discount where not done (end of episode)
         discounts = (~batch["done"]).float() * flags.discounting
@@ -415,7 +415,7 @@ def learn(
         )
 
         # Student Loss
-        # Compute loss as a weighted sum of the baseline loss, the policy
+        # Compute loss as the sum of the baseline loss, the policy
         # gradient loss and an entropy regularization term.
         pg_loss = compute_policy_gradient_loss(
             learner_outputs["policy_logits"],
@@ -443,6 +443,7 @@ def learn(
         else:
             aux_mean_episode = torch.mean(episode_returns).item()
 
+        # Statistics to be logged, different based on the chosen model
         stats = {
             "episode_returns": tuple(episode_returns.cpu().numpy()),
             "mean_episode_return": aux_mean_episode,
@@ -463,6 +464,7 @@ def learn(
                 "generator_current_target": None,
                 })
 
+        # Perform gradient-based update
         scheduler.step()
         optimizer.zero_grad()
         total_loss.backward()
@@ -475,7 +477,7 @@ def learn(
         # Share parameters of the learner with the actor model (the one performing rollouts)
         actor_model.load_state_dict(model.state_dict())
 
-        # Generator:
+        # If the generator is present in the model
         if flags.model != 'novelty_based':
             global generator_batch
             global generator_batch_aux
@@ -483,7 +485,7 @@ def learn(
             global generator_count_increment
             global generator_count_decrement
 
-            # Loading Batch
+            # Loading generator batch
             is_done = batch['done']==1
             # Reached is a variable of bools for all timesteps in all dimensions stating
             # whether the agent reached the goal or not at a certain time T in a batch B
@@ -530,6 +532,7 @@ def learn(
                     if not adaptive:
                         aux += (episode_step >= targ).float() * reached
                     else:
+                        # If adaptive, reward if the number of steps fit a window around t*
                         aux += torch.logical_and(torch.tensor(episode_step >= targ - flags.window),
                                                  torch.tensor(episode_step <= targ + flags.window)).float()
                     return aux
@@ -559,6 +562,7 @@ def learn(
                         generator_current_target += 1.0
                         generator_count_increment = 0
                 else:
+                    # Increasing mechanism of t* if the adaptive window method is chosen
                     if (generator_count_decrement >= flags.generator_counts or torch.mean(
                             generator_batch['ex_reward']) >= 0.8) and generator_current_target > 20:
                         generator_current_target -= 1.0
@@ -576,7 +580,6 @@ def learn(
                 generator_clipped_rewards = 1.0 * (generator_batch['ex_reward'] > 0).float() + generator_clipped_rewards * \
                                             (generator_batch['ex_reward'] <= 0).float()
                 generator_discounts = torch.zeros(generator_batch['episode_step'].shape).float().to(device=flags.device)
-
 
                 # Contains the number of the goal cell at each step
                 goals_aux = generator_batch["goal"]
@@ -614,6 +617,7 @@ def learn(
 
                 generator_total_loss = gg_loss + generator_entropy_loss + generator_baseline_loss
 
+                # Update the statistics to log
                 intrinsic_rewards_gen = generator_batch['reached']*(1 - 0.9 * (generator_batch["episode_step"].float()/max_steps))
                 stats["gen_rewards"] = torch.mean(generator_clipped_rewards).item()  
                 stats["gg_loss"] = gg_loss.item() 
@@ -639,7 +643,6 @@ def learn(
                     generator_batch = {key: tensor[:] for key, tensor in generator_batch_aux.items()}
                 else:
                     generator_batch = dict()
-                
         return stats
 
 
@@ -723,7 +726,7 @@ def train(flags):
     if flags.model != 'novelty_based':
         generator_model.share_memory()
 
-    # Add initial RNN state.
+    # Add initial RNN state (not applied).
     initial_agent_state_buffers = []
     for _ in range(flags.num_buffers):
         state = model.initial_state(batch_size=1)
@@ -733,7 +736,7 @@ def train(flags):
 
     # Deal with the multi-processing framework
     actor_processes = []
-    # Create a multiprocessing spawn object and the relative queues
+    # Create a multiprocessing fork object and the relative queues
     ctx = mp.get_context("fork")
     free_queue = ctx.SimpleQueue()
     full_queue = ctx.SimpleQueue()
@@ -748,7 +751,7 @@ def train(flags):
         actor.start()
         actor_processes.append(actor)
 
-    # Reassigned the Net object to learner_model
+    # Reassign the Net object to learner_model
     learner_model = StudentNet(env.observation_space.shape, env.action_space.n, goal_dim = flags.goal_dim,
                        no_generator = no_generator, state_embedding_dim=flags.state_embedding_dim,
                        num_input_frames=flags.num_input_frames,use_lstm=flags.use_lstm,
