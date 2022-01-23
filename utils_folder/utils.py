@@ -82,7 +82,7 @@ def get_batch(
     batch = {
         key: torch.stack([buffers[key][m] for m in indices], dim=1) for key in buffers
     }
-    # Just for RNN usage
+    # Just for LSTM usage
     initial_agent_state = (
         torch.cat(ts, dim=1)
         for ts in zip(*[initial_agent_state_buffers[m] for m in indices])

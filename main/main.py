@@ -286,7 +286,7 @@ def act(
                         else:
                             env.episode_step = 0  # Reset the number of steps in the episode
                         initial_frame = env_output['frame']
-                        # Inference, so no requirement of the gradient
+                        # Inference, so no requirement for the gradient
                         with torch.no_grad():
                             # Generate new goal
                             generator_output = generator_model(env_output)  # Predict the new goal
@@ -341,7 +341,7 @@ def learn(
     with lock:
         # The novelty-based intrinsic reward like BeBold
         if flags.model == 'novelty_based':
-            # Rnd intirnsic reward like BeBold
+            # Rnd intrinsic reward like BeBold
             # Get embeddings for the intrinsic reward
             random_embedding_t = random_target_network(batch, next_state=False) \
                 .reshape(flags.unroll_length, flags.batch_size, 128)
@@ -372,7 +372,7 @@ def learn(
             initial_frames = batch['initial_frame'][1:].float().to(device=flags.device)
             done_aux = batch['done'][1:].float().to(device=flags.device)  # Get where the experience was done
 
-            # Get, for each training frame whether the goal was reached or not
+            # Get, for each training frame, whether the goal was reached or not
             reached_goal = reached_goal_func(next_frame, batch['goal'][1:].to(device=flags.device),
                                              modify = flags.modify, no_boundary_awareness=flags.no_boundary_awareness,
                                              initial_frames = initial_frames, done_aux = done_aux)
@@ -862,6 +862,7 @@ def train(flags):
         threads.append(thread)
 
     def checkpoint():
+        """Regulate the logging of the results."""
         if flags.disable_checkpoint:
             return
         logging.info("Saving checkpoint to %s", checkpointpath)
@@ -878,6 +879,7 @@ def train(flags):
                 "generator_model_optimizer_state_dict": generator_model_optimizer.state_dict(),
                 "generator_scheduler_state_dict": generator_scheduler.state_dict()
             })
+        # Save model checkpoint to provided path 
         torch.save(dict_to_save, checkpointpath)
 
     timer = timeit.default_timer
@@ -885,6 +887,7 @@ def train(flags):
         last_checkpoint_time = timer()
         
         while frames < flags.total_frames:
+            # Log once every 10 minutes from the previous checkpoint
             start_frames = frames
             start_time = timer()
             time.sleep(5) 

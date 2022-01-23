@@ -50,7 +50,7 @@ class TeacherNet(nn.Module):
         self.inner = inner
 
         # Initialize the embedding layers for the objects in the environment. They start from a certain vocabulary
-        # size (11,6,4) and end with te required dimensionality
+        # size (11,6,4) and end with the required dimensionality
         self.embed_object = nn.Embedding(11, self.obj_dim)
         self.embed_color = nn.Embedding(6, self.col_dim)
         self.embed_contains = nn.Embedding(4, self.con_dim)
@@ -65,9 +65,8 @@ class TeacherNet(nn.Module):
         E = 1 # output of last layer
 
         """
-        What you do here is to create a 4-layer CNN representing the teacher.
-        It will input a 10-layer input with each level representing one feature
-        among possible colour, objects and state. 
+        Create a 4-layer CNN representing the teacher. It will receive a 10-layer input with each level representing one feature
+        among possible colours, objects and state. 
         """
 
         # Make 4 dimensionality preserving convolutional networks
@@ -108,7 +107,7 @@ class TeacherNet(nn.Module):
         else:
             self.aux_env_dim = self.env_dim
 
-            # Initialize baseline teacher as a linear layer projecting grid size to 1.
+        # Initialize baseline teacher as a linear layer projecting grid size to 1.
         self.baseline_teacher = init_(nn.Linear(self.aux_env_dim, 1))
 
     def _select(self, embed, x):
@@ -151,17 +150,20 @@ class TeacherNet(nn.Module):
 
     def forward(self, inputs):
         """Main Function, takes an observation and returns a goal."""
+        # Input frame
         x = inputs["frame"]
         T, B, *_ = x.shape
+        # Define encodings of carried colour and object
         carried_col = inputs["carried_col"]
         carried_obj = inputs["carried_obj"]
-
 
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
 
         x = x.long()
         carried_obj = carried_obj.long()
         carried_col = carried_col.long()
+
+        # Concatenate features in x
         x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)], dim = 3)
         carried_obj_emb = self._select(self.embed_object, carried_obj)
         carried_col_emb = self._select(self.embed_color, carried_col)
@@ -170,6 +172,7 @@ class TeacherNet(nn.Module):
         carried_obj_emb = carried_obj_emb.view(T * B, -1)
         carried_col_emb = carried_col_emb.view(T * B, -1)
 
+        # Apply convolutions
         x = self.extract_representation(x)
         x = x.view(T * B, -1)  # -1 means that the second dimension is inferred by torch
 
@@ -261,7 +264,7 @@ class StudentNet(nn.Module):
         self.baseline = init_(nn.Linear(self.state_embedding_dim, 1))
 
     def initial_state(self, batch_size):
-        """Initializes LSTM."""
+        """Initializes LSTM (not required for our experiments)"""
         if not self.use_lstm:
             return tuple()
         return tuple(torch.zeros(self.core.num_layers, batch_size, self.core.hidden_size) for _ in range(2))
@@ -306,6 +309,8 @@ class StudentNet(nn.Module):
        
         # -- [unroll_length*batch_size x height x width x channels]
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
+        
+        # If the teacher is present in the model, we include the goal to the input space for goal-conditioning
         if not self.no_generator:
             goal = torch.flatten(goal, 0, 1)
 
@@ -318,10 +323,13 @@ class StudentNet(nn.Module):
         carried_col = inputs["carried_col"]
         carried_obj = inputs["carried_obj"]
 
+        # Convert to long format
         x = x.long()
         carried_obj = carried_obj.long()
         carried_col = carried_col.long()
         # -- [B x H x W x K]
+
+        # Decide whether to add the goal channel to the student (depending on whether the generator is used)
         if not self.no_generator:
             goal = goal.long()
             x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2),
@@ -332,6 +340,7 @@ class StudentNet(nn.Module):
         carried_obj_emb = self._select(self.embed_object, carried_obj)
         carried_col_emb = self._select(self.embed_color, carried_col)
 
+        # Similar forward pass as teacher networl
         x = x.transpose(1, 3)
         x = self.feat_extract(x)
         x = x.view(T * B, -1)
@@ -340,6 +349,7 @@ class StudentNet(nn.Module):
         union = torch.cat([x, carried_obj_emb, carried_col_emb], dim=1)
         core_input = self.fc(union)
 
+        # If LSTMs are used for state encoding 
         if self.use_lstm:
             core_input = core_input.view(T, B, -1)
             core_output_list = []
@@ -354,9 +364,11 @@ class StudentNet(nn.Module):
             core_output = core_input
             core_state = tuple()
 
+        # Produce the policy output and the prediction for baseline subtraction
         policy_logits = self.policy(core_output)
         baseline = self.baseline(core_output)
         
+        # Sample an action if training mode, otherwise predict with arg-maximization 
         if self.training:
             action = torch.multinomial(F.softmax(policy_logits, dim=1), num_samples=1)
         else:
@@ -418,6 +430,7 @@ class RandomDistillationNetwork(nn.Module):
         )
 
     def _select(self, embed, x):
+        """Select the embeddings corresponding to x from an embedding matrix"""
         if self.use_index_select:
             out = embed.weight.index_select(0, x.reshape(-1))
             # handle reshaping x to 1-d and output back to N-d
@@ -457,7 +470,7 @@ class RandomDistillationNetwork(nn.Module):
 
         # -- [unroll_length*batch_size x height x width x channels]
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
-        # Out of n total time steps, next_state controls whether we embed states 1 to n-1 (next_state = False) ot
+        # Out of n total time steps, next_state controls whether we embed states 1 to n-1 (next_state = False) or
         # states 1 to n (next_state = True)
         if next_state:
             agent_loc = self.agent_loc(inputs["frame"][1:])
