@@ -46,7 +46,7 @@ conda create -n amigo python=3.7
 conda activate amigo
 
 # install dependencies
-git clone git@github.com:facebookresearch/adversarially-motivated-intrinsic-goals.git
+git clone https://github.com/allepalma/adversarially-motivated-intrinsic-goals.git
 cd adversarially-motivated-intrinsic-goals
 pip install -r requirements.txt
 ```
