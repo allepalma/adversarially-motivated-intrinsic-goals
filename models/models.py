@@ -376,6 +376,7 @@ class RandomDistillationNetwork(nn.Module):
         super(RandomDistillationNetwork, self).__init__()
         self.observation_shape = observation_shape
 
+        # Initialize the variables describing the environment
         self.use_index_select = True
         self.obj_dim = 5
         self.col_dim = 3
@@ -383,16 +384,18 @@ class RandomDistillationNetwork(nn.Module):
         self.agent_loc_dim = 10
         self.num_channels = (self.obj_dim + self.col_dim + self.con_dim)
 
+        # The embedding layers
         self.embed_object = nn.Embedding(11, self.obj_dim)
         self.embed_color = nn.Embedding(6, self.col_dim)
         self.embed_contains = nn.Embedding(4, self.con_dim)
         self.embed_agent_loc = nn.Embedding(self.observation_shape[0] * self.observation_shape[1] + 1,
                                             self.agent_loc_dim)
 
+        # Weight initialization function
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0), nn.init.calculate_gain('relu'))
 
-        ##Because Fully_observed
+        # Embedding convolutional network
         self.feat_extract = nn.Sequential(
             init_(nn.Conv2d(in_channels=self.num_channels, out_channels=32, kernel_size=(3, 3), stride=2, padding=1)),
             nn.ELU(),
@@ -406,6 +409,7 @@ class RandomDistillationNetwork(nn.Module):
             nn.ELU(),
         )
 
+        # Final FF mapping layers
         self.fc = nn.Sequential(
             init_(nn.Linear(32 + self.agent_loc_dim + self.obj_dim + self.col_dim, 128)),
             nn.ReLU(),
@@ -422,8 +426,7 @@ class RandomDistillationNetwork(nn.Module):
             return embed(x)
 
     def create_embeddings(self, x, id):
-        # indices = torch.tensor([i for i in range(x.shape[3]) if i%3==id])
-        # object_ids = torch.index_select(x, 3, indices)
+        """ Efficient function to get the embeddings from an index"""
         if id == 0:
             objects_emb = self._select(self.embed_object, x[:, :, :, id::3])
         elif id == 1:
@@ -434,6 +437,7 @@ class RandomDistillationNetwork(nn.Module):
         return embeddings
 
     def agent_loc(self, frames):
+        """Returns the location of the agent from an observation"""
         T, B, *_ = frames.shape
         agent_location = torch.flatten(frames, 2, 3)
         agent_location = agent_location[:, :, :, 0]
@@ -443,6 +447,7 @@ class RandomDistillationNetwork(nn.Module):
         return agent_location
 
     def forward(self, inputs, next_state=False):
+        """Main state embedding function"""
         # -- [unroll_length x batch_size x height x width x channels]
         if next_state:
             x = inputs["frame"][1:]
@@ -452,6 +457,8 @@ class RandomDistillationNetwork(nn.Module):
 
         # -- [unroll_length*batch_size x height x width x channels]
         x = torch.flatten(x, 0, 1)  # Merge time and batch.
+        # Out of n total time steps, next_state controls whether we embed states 1 to n-1 (next_state = False) ot
+        # states 1 to n (next_state = True)
         if next_state:
             agent_loc = self.agent_loc(inputs["frame"][1:])
             carried_col = inputs["carried_col"][1:]
@@ -461,12 +468,14 @@ class RandomDistillationNetwork(nn.Module):
             carried_col = inputs["carried_col"][:-1]
             carried_obj = inputs["carried_obj"][:-1]
 
+        # Embedding procedure
         x = x.long()
         agent_loc = agent_loc.long()
         carried_obj = carried_obj.long()
         carried_col = carried_col.long()
         # -- [B x H x W x K]
         x = torch.cat([self.create_embeddings(x, 0), self.create_embeddings(x, 1), self.create_embeddings(x, 2)], dim=3)
+        # Select the embeddings for the location, carried object and carried colour from the embedding matrices
         agent_loc_emb = self._select(self.embed_agent_loc, agent_loc)
         carried_obj_emb = self._select(self.embed_object, carried_obj)
         carried_col_emb = self._select(self.embed_color, carried_col)
@@ -479,6 +488,7 @@ class RandomDistillationNetwork(nn.Module):
         carried_obj_emb = carried_obj_emb.view(T * B, -1)
         carried_col_emb = carried_col_emb.view(T * B, -1)
 
+        # Apply the network modules
         x = self.feat_extract(x)
         x = x.view(T * B, -1)
         union = torch.cat([x, agent_loc_emb, carried_obj_emb, carried_col_emb], dim=1)

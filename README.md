@@ -105,6 +105,10 @@ The flag ```--model``` followed by default, window_adaptive and novelty_based mu
 
 If the flag ```--record_video``` is used, an mp4 video of a random rollout by the trained agent will be produced at the selected path. To record the video, ffmpeg must be installed.
 
+## Additional folders
+
+The ```results``` folder reports the logs of results from running the AMIGo model on different MiniGrid environments (reproduction)
+
 
 
 # License
