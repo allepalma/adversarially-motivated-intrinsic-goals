@@ -12,7 +12,7 @@ The repository is organized in the following way:
 * Functions utilized in the training loop are contained in utils_folder/utils.py and utils_folder/env_utils.py
 * torchbeast/core contains util functions to implement the IMPALA algorithm for fast distributed policy gradient 
 
-# Citation
+# References
 
 Our project reimplements AMIGo, which is described in the following paper:
 
